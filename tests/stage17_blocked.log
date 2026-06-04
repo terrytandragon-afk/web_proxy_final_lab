@@ -1,0 +1,2 @@
+[2026-06-04 16:50:52] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-04 16:51:43] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist

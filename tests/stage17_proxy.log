@@ -1,0 +1,16 @@
+[2026-06-04 16:50:52] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:50:52] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:50:52] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-04 16:50:52] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-04 16:50:52] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:50:52] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:50:52] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 retry_after=59
+[2026-06-04 16:50:52] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:51:43] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:51:43] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:51:43] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-04 16:51:43] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-04 16:51:43] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:51:43] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179
+[2026-06-04 16:51:43] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 retry_after=59
+[2026-06-04 16:51:43] ALLOW client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt status=200 bytes=179

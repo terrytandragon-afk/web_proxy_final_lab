@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Proxy Admin</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --line: #d8dee8;
+      --text: #1f2933;
+      --muted: #667085;
+      --accent: #0f766e;
+      --accent-soft: #e6f4f1;
+      --blue: #2563eb;
+      --warn: #b45309;
+      --danger: #b42318;
+      --ok: #15803d;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      border-color: #a8b3c4;
+      background: #f8fafc;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: #0b615a;
+    }
+
+    button.danger {
+      border-color: #f3b7b0;
+      color: var(--danger);
+    }
+
+    button.small {
+      min-height: 28px;
+      padding: 0 8px;
+      font-size: 12px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 10px;
+    }
+
+    textarea {
+      min-height: 76px;
+      padding: 8px 10px;
+      resize: vertical;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      line-height: 1.45;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      min-height: 18px;
+      padding: 0;
+    }
+
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 20px 24px 32px;
+    }
+
+    .notice {
+      min-height: 34px;
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 8px 12px;
+      color: var(--muted);
+    }
+
+    .notice.ok {
+      border-color: #abefc6;
+      background: #f0fdf4;
+      color: var(--ok);
+    }
+
+    .notice.error {
+      border-color: #f3b7b0;
+      background: #fff4f2;
+      color: var(--danger);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(92px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      min-height: 76px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric .value {
+      margin-top: 8px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.25fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+    }
+
+    .section-body {
+      padding: 14px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .field label,
+    .toggle label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding-top: 20px;
+    }
+
+    .toggle label {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .rule-group {
+      border-bottom: 1px solid var(--line);
+      padding: 14px;
+    }
+
+    .rule-group:last-child {
+      border-bottom: 0;
+    }
+
+    .rule-desc {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .rule-add {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 30px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      min-height: 28px;
+      border: 1px solid #ccd6e0;
+      border-radius: 999px;
+      background: #f8fafc;
+      padding: 2px 4px 2px 10px;
+      color: #344054;
+      overflow-wrap: anywhere;
+    }
+
+    .chip.danger {
+      border-color: #f3b7b0;
+      background: #fff4f2;
+      color: var(--danger);
+    }
+
+    .chip.warn {
+      border-color: #f4c790;
+      background: #fff8eb;
+      color: var(--warn);
+    }
+
+    .chip.ok {
+      border-color: #abefc6;
+      background: #f0fdf4;
+      color: var(--ok);
+    }
+
+    .chip button {
+      min-height: 22px;
+      border-radius: 999px;
+      border-color: transparent;
+      background: transparent;
+      padding: 0 6px;
+      color: inherit;
+    }
+
+    .empty {
+      color: #98a2b3;
+    }
+
+    .change-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .change-controls select {
+      max-width: 160px;
+    }
+
+    .change-list {
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .change-entry {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      line-height: 1.45;
+    }
+
+    .change-entry:last-child {
+      border-bottom: 0;
+    }
+
+    .change-time {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .change-main {
+      margin-top: 3px;
+      overflow-wrap: anywhere;
+    }
+
+    .logs-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      min-height: 32px;
+      padding: 0 10px;
+    }
+
+    .tab.active {
+      border-color: var(--blue);
+      color: var(--blue);
+      background: #eff6ff;
+    }
+
+    .logbox {
+      height: 430px;
+      overflow: auto;
+      background: #101828;
+      color: #e4e7ec;
+      padding: 12px;
+      font: 12px/1.55 Consolas, "Cascadia Mono", monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .tables {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: #fafafa;
+    }
+
+    td:last-child,
+    th:last-child {
+      text-align: right;
+    }
+
+    @media (max-width: 1040px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+
+      .layout,
+      .tables,
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div>
+        <h1>Web 代理服务器管理台</h1>
+        <div class="subtitle" id="runtime">正在连接后端</div>
+      </div>
+      <div class="actions">
+        <button id="refreshBtn" class="primary" type="button">刷新</button>
+        <button id="reloadBtn" type="button">重新加载配置</button>
+        <button id="clearCacheBtn" type="button">清空缓存</button>
+        <button id="resetStatsBtn" type="button">重置统计</button>
+        <button id="clearLogsBtn" type="button">清空日志</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="notice" id="notice">规则查询、添加、删除、修改、替换会直接调用后端 API，并保存到当前配置文件。</div>
+    <div class="metrics" id="metrics"></div>
+
+    <div class="layout">
+      <div>
+        <section>
+          <div class="section-title">
+            <h2>运行设置</h2>
+            <button id="saveSettingsBtn" class="primary" type="button">保存设置</button>
+          </div>
+          <div class="section-body">
+            <div class="settings-grid" id="settings"></div>
+          </div>
+        </section>
+
+        <section style="margin-top:16px">
+          <div class="section-title">
+            <h2>过滤规则管理</h2>
+            <span class="empty">增、删、改、查</span>
+          </div>
+          <div id="ruleGroups"></div>
+        </section>
+
+        <section style="margin-top:16px">
+          <div class="section-title">
+            <h2>规则变更回显</h2>
+            <select id="changeFilter">
+              <option value="all">全部操作</option>
+              <option value="add">新增</option>
+              <option value="update">修改</option>
+              <option value="delete">删除</option>
+              <option value="replace">替换整组</option>
+              <option value="settings">运行设置</option>
+            </select>
+          </div>
+          <div class="section-body">
+            <div class="change-list" id="changeList">
+              <div class="change-entry empty">暂无规则变更记录</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section>
+        <div class="logs-header">
+          <h2>日志</h2>
+          <div class="tabs">
+            <button class="tab active" data-log="proxy" type="button">访问</button>
+            <button class="tab" data-log="blocked" type="button">拦截</button>
+            <button class="tab" data-log="error" type="button">错误</button>
+          </div>
+        </div>
+        <div class="logbox" id="logs"></div>
+      </section>
+    </div>
+
+    <div class="tables">
+      <section>
+        <div class="section-title"><h2>域名访问排行</h2></div>
+        <div class="section-body">
+          <table>
+            <thead><tr><th>域名</th><th>次数</th></tr></thead>
+            <tbody id="topHosts"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-title"><h2>关键字命中排行</h2></div>
+        <div class="section-body">
+          <table>
+            <thead><tr><th>关键字</th><th>次数</th></tr></thead>
+            <tbody id="keywordHits"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // 前端只负责管理规则和展示状态，真正的代理转发、过滤、日志逻辑都在 src/proxy.py。
+    const state = {
+      currentLog: "proxy",
+      config: null,
+      rules: null,
+      stats: null,
+      changes: []
+    };
+
+    const metricDefs = [
+      ["total_requests", "总请求"],
+      ["allowed_requests", "放行"],
+      ["blocked_domain", "域名拦截"],
+      ["blocked_url", "URL 拦截"],
+      ["blocked_method", "方法拦截"],
+      ["filtered_keyword", "正文过滤"],
+      ["https_tunnels", "HTTPS 隧道"],
+      ["cache_hits", "缓存命中"],
+      ["cache_misses", "缓存未命中"],
+      ["cache_entries", "缓存条目"],
+      ["auth_required", "认证拦截"],
+      ["rate_limited", "限流拦截"]
+    ];
+
+    const chipKinds = {
+      blocked_domains: "danger",
+      allowed_domains: "ok",
+      blocked_url_keywords: "warn",
+      blocked_content_keywords: "danger",
+      blocked_methods: "warn"
+    };
+
+    const actionLabels = {
+      add: "新增",
+      update: "修改",
+      delete: "删除",
+      replace: "替换整组",
+      settings: "运行设置"
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function setNotice(message, kind = "") {
+      const notice = document.getElementById("notice");
+      notice.textContent = message;
+      notice.className = `notice ${kind}`.trim();
+    }
+
+    function getRuleTitle(ruleType) {
+      const group = state.rules?.groups?.find(item => item.type === ruleType);
+      return group ? group.title : ruleType;
+    }
+
+    function getRuleHint(ruleType) {
+      // 域名规则必须显式表达匹配范围，避免短词 baidu 误拦其他无关域名。
+      if (ruleType === "blocked_domains" || ruleType === "allowed_domains") {
+        return "示例：baidu.com 匹配 baidu.com 和 www.baidu.com；*.baidu.com 匹配子域名；*baidu* 是包含匹配，范围更宽，慎用；baidu 不会自动当关键词。";
+      }
+      return "";
+    }
+
+    function summarizeChange(entry) {
+      const title = getRuleTitle(entry.rule_type);
+      if (entry.action === "add") return `新增 ${title}：${entry.value}`;
+      if (entry.action === "delete") return `删除 ${title}：${entry.value}`;
+      if (entry.action === "update") return `修改 ${title}：${entry.old_value} -> ${entry.new_value}`;
+      if (entry.action === "replace") return `替换 ${title}：${(entry.values || []).join(", ") || "空规则组"}`;
+      if (entry.action === "settings") return `更新运行设置：${Object.entries(entry.settings || {}).map(([key, value]) => `${key}=${value}`).join(", ")}`;
+      return "规则已变更";
+    }
+
+    function renderChangeLog() {
+      // 规则变更回显用于课堂展示：能明确看到前端/API 刚才改变了哪一组规则。
+      const list = document.getElementById("changeList");
+      const filter = document.getElementById("changeFilter")?.value || "all";
+      const entries = state.changes.filter(entry => filter === "all" || entry.action === filter);
+      if (!entries.length) {
+        list.innerHTML = '<div class="change-entry empty">暂无规则变更记录</div>';
+        return;
+      }
+      list.innerHTML = entries.map(entry => `
+        <div class="change-entry">
+          <div class="change-time">${escapeHtml(entry.time)} / ${escapeHtml(actionLabels[entry.action] || entry.action)}</div>
+          <div class="change-main">${escapeHtml(summarizeChange(entry))}</div>
+          <div class="change-time">changed=${escapeHtml(entry.changed)} saved=${escapeHtml(entry.saved)}</div>
+        </div>
+      `).join("");
+    }
+
+    function recordChange(action, result) {
+      const entry = result.history_entry || {
+        time: new Date().toLocaleString(),
+        action,
+        ...result
+      };
+      state.changes.unshift(entry);
+      state.changes = state.changes.slice(0, 40);
+      renderChangeLog();
+      setNotice(summarizeChange(entry), "ok");
+    }
+
+    async function getJson(url, options = {}) {
+      // 统一管理 fetch，方便所有按钮复用同一种错误处理。
+      const response = await fetch(url, options);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `${response.status} ${response.statusText}`);
+      }
+      return payload;
+    }
+
+    function postJson(url, payload = {}) {
+      return getJson(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    function renderSettings(config) {
+      // 这些设置不是过滤列表，但会影响代理行为，所以单独放在运行设置区。
+      document.getElementById("settings").innerHTML = `
+        <div class="field">
+          <label for="modeInput">控制模式</label>
+          <select id="modeInput">
+            <option value="blacklist" ${config.mode === "blacklist" ? "selected" : ""}>blacklist 黑名单</option>
+            <option value="whitelist" ${config.mode === "whitelist" ? "selected" : ""}>whitelist 白名单</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>代理地址</label>
+          <input value="${escapeHtml(config.listen_host)}:${escapeHtml(config.listen_port)}" disabled>
+        </div>
+        <div class="toggle">
+          <input id="cacheEnabledInput" type="checkbox" ${config.cache_enabled ? "checked" : ""}>
+          <label for="cacheEnabledInput">启用 HTTP GET 缓存</label>
+        </div>
+        <div class="field">
+          <label for="cacheTtlInput">缓存 TTL 秒</label>
+          <input id="cacheTtlInput" type="number" min="0" value="${escapeHtml(config.cache_ttl_seconds || 0)}">
+        </div>
+        <div class="field">
+          <label for="cacheMaxInput">最大缓存条目</label>
+          <input id="cacheMaxInput" type="number" min="0" value="${escapeHtml(config.cache_max_items || 0)}">
+        </div>
+        <div class="toggle">
+          <input id="authEnabledInput" type="checkbox" ${config.proxy_auth_enabled ? "checked" : ""}>
+          <label for="authEnabledInput">启用代理认证</label>
+        </div>
+        <div class="field">
+          <label for="authUsersInput">代理认证用户 JSON</label>
+          <textarea id="authUsersInput">${escapeHtml(JSON.stringify(config.proxy_auth_users || {}, null, 2))}</textarea>
+        </div>
+        <div class="toggle">
+          <input id="rateEnabledInput" type="checkbox" ${config.rate_limit_enabled ? "checked" : ""}>
+          <label for="rateEnabledInput">启用访问限流</label>
+        </div>
+        <div class="field">
+          <label for="rateLimitInput">每分钟请求上限</label>
+          <input id="rateLimitInput" type="number" min="1" value="${escapeHtml(config.rate_limit_per_minute || 60)}">
+        </div>
+        <div class="field">
+          <label for="rateWindowInput">限流时间窗口秒</label>
+          <input id="rateWindowInput" type="number" min="1" value="${escapeHtml(config.rate_limit_window_seconds || 60)}">
+        </div>
+      `;
+    }
+
+    function renderRuleGroups(rules) {
+      // 每个规则组都支持查当前值、新增、修改、删除，以及一次性替换整组规则。
+      const groups = rules.groups || [];
+      document.getElementById("ruleGroups").innerHTML = groups.map(group => {
+        const kind = chipKinds[group.type] || "";
+        const hint = getRuleHint(group.type);
+        const chips = group.values && group.values.length
+          ? group.values.map(value => `
+              <span class="chip ${kind}">
+                <span>${escapeHtml(value)}</span>
+                <button class="small" type="button" data-rule-update="${escapeHtml(group.type)}" data-value="${escapeHtml(value)}">修改</button>
+                <button class="small" type="button" data-rule-delete="${escapeHtml(group.type)}" data-value="${escapeHtml(value)}">删除</button>
+              </span>
+            `).join("")
+          : '<span class="empty">暂无规则</span>';
+        return `
+          <div class="rule-group">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <h3>${escapeHtml(group.title)}</h3>
+              <button class="small" type="button" data-rule-replace="${escapeHtml(group.type)}">替换整组</button>
+            </div>
+            <p class="rule-desc">${escapeHtml(group.description)}</p>
+            ${hint ? `<p class="rule-desc">${escapeHtml(hint)}</p>` : ""}
+            <form class="rule-add" data-rule-add="${escapeHtml(group.type)}">
+              <input name="value" placeholder="输入${escapeHtml(group.value_label)}">
+              <button class="primary" type="submit">添加</button>
+            </form>
+            <div class="chips">${chips}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderStats(snapshot) {
+      const stats = snapshot.stats || {};
+      const metrics = metricDefs.map(([key, label]) => `
+        <div class="metric">
+          <div class="label">${label}</div>
+          <div class="value">${escapeHtml(stats[key] || 0)}</div>
+        </div>
+      `).join("");
+      document.getElementById("metrics").innerHTML = metrics;
+
+      const minutes = Math.floor((snapshot.uptime_seconds || 0) / 60);
+      const seconds = (snapshot.uptime_seconds || 0) % 60;
+      document.getElementById("runtime").textContent =
+        `启动时间 ${snapshot.started_at || "-"}，已运行 ${minutes} 分 ${seconds} 秒`;
+
+      renderTable("topHosts", snapshot.top_hosts || [], "暂无域名访问记录");
+      renderTable("keywordHits", snapshot.keyword_hits || [], "暂无关键字命中记录");
+    }
+
+    function renderTable(id, rows, emptyText) {
+      const tbody = document.getElementById(id);
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="2" class="empty">${emptyText}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(([name, count]) => `
+        <tr><td>${escapeHtml(name)}</td><td>${escapeHtml(count)}</td></tr>
+      `).join("");
+    }
+
+    async function loadConfig() {
+      const payload = await getJson("/api/config");
+      state.config = payload.config;
+      renderSettings(state.config);
+    }
+
+    async function loadRules() {
+      const payload = await getJson("/api/rules");
+      state.rules = payload;
+      renderRuleGroups(payload);
+    }
+
+    async function loadChanges() {
+      // The backend keeps this history, so curl.exe and tools/rule_cli.py changes are visible too.
+      const payload = await getJson("/api/changes?limit=80");
+      state.changes = payload.changes || [];
+      renderChangeLog();
+    }
+
+    async function loadStats() {
+      const payload = await getJson("/api/stats");
+      state.stats = payload;
+      renderStats(payload);
+    }
+
+    async function loadLogs() {
+      const payload = await getJson(`/api/logs?kind=${encodeURIComponent(state.currentLog)}&limit=160`);
+      const logs = document.getElementById("logs");
+      logs.textContent = payload.logs && payload.logs.length
+        ? payload.logs.join("\n")
+        : "暂无日志";
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadConfig(), loadRules(), loadStats(), loadLogs(), loadChanges()]);
+      renderChangeLog();
+    }
+
+    async function addRule(ruleType, value) {
+      const result = await postJson("/api/rules/add", { rule_type: ruleType, value });
+      recordChange("add", result);
+      await Promise.all([loadConfig(), loadRules(), loadChanges()]);
+    }
+
+    async function deleteRule(ruleType, value) {
+      const result = await postJson("/api/rules/delete", { rule_type: ruleType, value });
+      recordChange("delete", result);
+      await Promise.all([loadConfig(), loadRules(), loadChanges()]);
+    }
+
+    async function updateRule(ruleType, oldValue, newValue) {
+      const result = await postJson("/api/rules/update", {
+        rule_type: ruleType,
+        old_value: oldValue,
+        new_value: newValue
+      });
+      recordChange("update", result);
+      await Promise.all([loadConfig(), loadRules(), loadChanges()]);
+    }
+
+    async function replaceRuleGroup(ruleType, values) {
+      const result = await postJson("/api/rules/replace", {
+        rule_type: ruleType,
+        values
+      });
+      recordChange("replace", result);
+      await Promise.all([loadConfig(), loadRules(), loadChanges()]);
+    }
+
+    async function saveSettings() {
+      // 保存设置后立即刷新，代理线程后续请求会读取新的运行配置。
+      let authUsers = {};
+      try {
+        authUsers = JSON.parse(document.getElementById("authUsersInput").value || "{}");
+      } catch (error) {
+        throw new Error("代理认证用户 JSON 格式错误");
+      }
+      const settings = {
+        mode: document.getElementById("modeInput").value,
+        cache_enabled: document.getElementById("cacheEnabledInput").checked,
+        cache_ttl_seconds: Number(document.getElementById("cacheTtlInput").value || 0),
+        cache_max_items: Number(document.getElementById("cacheMaxInput").value || 0),
+        proxy_auth_enabled: document.getElementById("authEnabledInput").checked,
+        proxy_auth_users: authUsers,
+        rate_limit_enabled: document.getElementById("rateEnabledInput").checked,
+        rate_limit_per_minute: Number(document.getElementById("rateLimitInput").value || 60),
+        rate_limit_window_seconds: Number(document.getElementById("rateWindowInput").value || 60)
+      };
+      const result = await postJson("/api/settings/update", { settings });
+      recordChange("settings", result);
+      await refreshAll();
+    }
+
+    async function reloadConfig() {
+      await postJson("/api/reload");
+      setNotice("已从配置文件重新加载", "ok");
+      await refreshAll();
+    }
+
+    async function clearCache() {
+      await postJson("/api/cache/clear");
+      setNotice("缓存已清空", "ok");
+      await refreshAll();
+    }
+
+    async function resetStats() {
+      await postJson("/api/stats/reset");
+      setNotice("统计已重置", "ok");
+      await refreshAll();
+    }
+
+    async function clearLogs() {
+      await postJson("/api/logs/clear");
+      setNotice("日志已清空", "ok");
+      await refreshAll();
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      refreshAll().then(() => setNotice("已刷新", "ok")).catch(showError);
+    });
+    document.getElementById("reloadBtn").addEventListener("click", () => reloadConfig().catch(showError));
+    document.getElementById("clearCacheBtn").addEventListener("click", () => clearCache().catch(showError));
+    document.getElementById("resetStatsBtn").addEventListener("click", () => resetStats().catch(showError));
+    document.getElementById("clearLogsBtn").addEventListener("click", () => clearLogs().catch(showError));
+    document.getElementById("saveSettingsBtn").addEventListener("click", () => saveSettings().catch(showError));
+    document.getElementById("changeFilter").addEventListener("change", renderChangeLog);
+
+    document.getElementById("ruleGroups").addEventListener("submit", event => {
+      event.preventDefault();
+      const form = event.target.closest("[data-rule-add]");
+      if (!form) return;
+      const value = new FormData(form).get("value");
+      addRule(form.dataset.ruleAdd, value).then(() => form.reset()).catch(showError);
+    });
+
+    document.getElementById("ruleGroups").addEventListener("click", event => {
+      const updateButton = event.target.closest("[data-rule-update]");
+      if (updateButton) {
+        const newValue = window.prompt(`将 ${updateButton.dataset.value} 修改为：`, updateButton.dataset.value);
+        if (newValue !== null) {
+          updateRule(updateButton.dataset.ruleUpdate, updateButton.dataset.value, newValue).catch(showError);
+        }
+        return;
+      }
+
+      const replaceButton = event.target.closest("[data-rule-replace]");
+      if (replaceButton) {
+        const group = state.rules?.groups?.find(item => item.type === replaceButton.dataset.ruleReplace);
+        const currentValues = group?.values || [];
+        const input = window.prompt("请输入新的规则组，多个值用逗号分隔。留空表示清空该规则组。", currentValues.join(", "));
+        if (input !== null) {
+          const values = input.split(/[,\n，]+/).map(item => item.trim()).filter(Boolean);
+          replaceRuleGroup(replaceButton.dataset.ruleReplace, values).catch(showError);
+        }
+        return;
+      }
+
+      const button = event.target.closest("[data-rule-delete]");
+      if (!button) return;
+      deleteRule(button.dataset.ruleDelete, button.dataset.value).catch(showError);
+    });
+
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", async () => {
+        document.querySelectorAll(".tab").forEach(item => item.classList.remove("active"));
+        tab.classList.add("active");
+        state.currentLog = tab.dataset.log;
+        await loadLogs();
+      });
+    });
+
+    function showError(error) {
+      setNotice(`操作失败：${error.message}`, "error");
+    }
+
+    refreshAll().then(() => {
+      setNotice("已连接后端，可以添加、删除、修改、替换、查询过滤规则。", "ok");
+      renderChangeLog();
+    }).catch(error => {
+      document.getElementById("runtime").textContent = `后端连接失败：${error.message}`;
+      showError(error);
+    });
+
+    setInterval(() => {
+      loadStats().catch(() => {});
+      loadLogs().catch(() => {});
+    }, 5000);
+  </script>
+</body>
+</html>

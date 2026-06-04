@@ -1,0 +1,25 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 8080,
+  "admin_host": "127.0.0.1",
+  "admin_port": 8088,
+  "mode": "blacklist",
+  "blocked_domains": [],
+  "allowed_domains": ["127.0.0.1", "localhost"],
+  "blocked_url_keywords": [],
+  "blocked_content_keywords": [],
+  "blocked_methods": [],
+  "timeout_seconds": 10,
+  "max_clients": 50,
+  "cache_enabled": false,
+  "proxy_auth_enabled": true,
+  "proxy_auth_users": {
+    "student": "123456"
+  },
+  "rate_limit_enabled": false,
+  "rate_limit_per_minute": 60,
+  "rate_limit_window_seconds": 60,
+  "log_file": "logs/proxy.log",
+  "blocked_log_file": "logs/blocked.log",
+  "error_log_file": "logs/error.log"
+}

@@ -1,0 +1,24 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 18111,
+  "admin_host": "127.0.0.1",
+  "admin_port": 18112,
+  "mode": "blacklist",
+  "blocked_domains": [],
+  "allowed_domains": [],
+  "blocked_url_keywords": [],
+  "blocked_content_keywords": [],
+  "blocked_methods": [],
+  "cache_enabled": false,
+  "proxy_auth_enabled": false,
+  "proxy_auth_users": {
+    "alice": "pw123"
+  },
+  "rate_limit_enabled": true,
+  "rate_limit_per_minute": 5,
+  "rate_limit_window_seconds": 60,
+  "timeout_seconds": 5,
+  "log_file": "tests/stage17_proxy.log",
+  "blocked_log_file": "tests/stage17_blocked.log",
+  "error_log_file": "tests/stage17_error.log"
+}
