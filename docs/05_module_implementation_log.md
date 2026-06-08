@@ -1408,3 +1408,44 @@ URL 关键字
 ```text
 前端中的每个规则组都可以直接输入规则值并点击“添加”，也可以点击现有规则旁边的“删除”。这些操作会调用后端 API，后端更新运行时配置，并写回配置文件。
 ```
+
+## 阶段 18：后端配置与规则模块拆分
+
+### 实现内容
+
+- 保留 `src/proxy.py` 作为稳定的命令行启动入口。
+- 新建 `src/webproxy/config_rules.py`，集中管理配置读取、路径解析、规则类型、规则值标准化和宽松 JSON 解析。
+- 同时支持 `python src\proxy.py` 直接启动，以及测试代码使用 `from src import proxy` 导入。
+- 不改变配置文件格式、管理 API、前端页面或命令行规则管理方式。
+
+### 验证命令
+
+检查启动参数：
+
+```powershell
+python src\proxy.py --help
+```
+
+运行与规则模块直接相关的测试：
+
+```powershell
+python tests\stage8_admin_smoke.py
+python tests\stage15_rule_management_smoke.py
+python tests\stage16_rule_cli_smoke.py
+```
+
+运行完整项目回归：
+
+```powershell
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `python`：使用当前环境中的 Python 解释器。
+- `src\proxy.py`：启动后端主程序。
+- `--help`：只显示支持的命令行参数，不启动服务器。
+- `tests\stage8_admin_smoke.py`：验证管理前端与管理 API。
+- `tests\stage15_rule_management_smoke.py`：验证规则增删改查和模式切换。
+- `tests\stage16_rule_cli_smoke.py`：验证后端命令行规则管理工具。
+- `tests\run_all_smoke.py`：按批次验证整个项目。

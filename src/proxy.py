@@ -8,178 +8,39 @@ import threading
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+try:
+    from .webproxy.config_rules import (
+        CONFIG_SETTING_FIELDS,
+        LIST_RULE_FIELDS,
+        PROJECT_ROOT,
+        build_rules_payload,
+        load_config,
+        normalize_rule_value,
+        parse_loose_json_object,
+        resolve_project_path,
+        rule_identity,
+        validate_rule_type,
+    )
+except ImportError:
+    # Running `python src/proxy.py` adds `src` rather than the project root to sys.path.
+    from webproxy.config_rules import (
+        CONFIG_SETTING_FIELDS,
+        LIST_RULE_FIELDS,
+        PROJECT_ROOT,
+        build_rules_payload,
+        load_config,
+        normalize_rule_value,
+        parse_loose_json_object,
+        resolve_project_path,
+        rule_identity,
+        validate_rule_type,
+    )
 
 BUFFER_SIZE = 8192
 DEFAULT_TIMEOUT = 10
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_INDEX = PROJECT_ROOT / "frontend" / "index.html"
-
-# 可通过管理前端/API/命令行工具增删改查的过滤规则字段。
-# 每个字段都对应配置文件中的一个列表，代理转发时会实时读取这些规则。
-LIST_RULE_FIELDS = {
-    "blocked_domains": {
-        "title": "域名黑名单",
-        "description": "命中后直接返回 403 Forbidden，支持完整域名、父域名和通配符。示例：baidu.com、www.baidu.com、*.baidu.com、*baidu*。",
-        "value_label": "域名或通配符",
-    },
-    "allowed_domains": {
-        "title": "域名白名单",
-        "description": "白名单模式下只有这些域名允许访问，匹配方式与域名黑名单一致。",
-        "value_label": "允许访问的域名或通配符",
-    },
-    "blocked_url_keywords": {
-        "title": "URL 关键字",
-        "description": "请求 URL 中包含该关键字时直接拦截。",
-        "value_label": "URL 关键字",
-    },
-    "blocked_content_keywords": {
-        "title": "正文关键字",
-        "description": "HTTP 明文网页正文包含该关键字时返回过滤提示页。",
-        "value_label": "正文关键字",
-    },
-    "blocked_methods": {
-        "title": "禁止 HTTP 方法",
-        "description": "请求方法命中后直接拦截，例如 PUT、DELETE。",
-        "value_label": "HTTP 方法",
-    },
-}
-
-CONFIG_SETTING_FIELDS = {
-    "mode": str,
-    "cache_enabled": bool,
-    "cache_ttl_seconds": int,
-    "cache_max_items": int,
-    "proxy_auth_enabled": bool,
-    "proxy_auth_users": dict,
-    "rate_limit_enabled": bool,
-    "rate_limit_per_minute": int,
-    "rate_limit_window_seconds": int,
-}
-
-
-def normalize_rule_value(rule_type, value):
-    """把用户输入的规则值整理成统一格式，避免空值和重复规则。"""
-    normalized = str(value or "").strip()
-    if not normalized:
-        raise ValueError("rule value cannot be empty")
-    if rule_type in ("blocked_domains", "allowed_domains"):
-        return normalized.lower().strip(".")
-    if rule_type == "blocked_methods":
-        return normalized.upper()
-    return normalized
-
-
-def rule_identity(rule_type, value):
-    """生成规则比较用的标识，删除和去重时使用。"""
-    return normalize_rule_value(rule_type, value).lower()
-
-
-def validate_rule_type(rule_type):
-    if rule_type not in LIST_RULE_FIELDS:
-        raise ValueError(f"unsupported rule type: {rule_type}")
-
-
-def build_rules_payload(config):
-    """把当前配置整理成前端更容易渲染的规则分组结构。"""
-    groups = []
-    for rule_type, metadata in LIST_RULE_FIELDS.items():
-        groups.append(
-            {
-                "type": rule_type,
-                "title": metadata["title"],
-                "description": metadata["description"],
-                "value_label": metadata["value_label"],
-                "values": list(config.get(rule_type, [])),
-            }
-        )
-    return {
-        "mode": config.get("mode", "blacklist"),
-        "groups": groups,
-    }
-
-
-def split_top_level_csv(text):
-    """Split comma-separated values while respecting nested []/{} and quotes."""
-    items = []
-    current = []
-    depth = 0
-    quote = ""
-    escaped = False
-    for char in text:
-        if quote:
-            current.append(char)
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = ""
-            continue
-        if char in ("'", '"'):
-            quote = char
-            current.append(char)
-        elif char in ("{", "["):
-            depth += 1
-            current.append(char)
-        elif char in ("}", "]"):
-            depth -= 1
-            current.append(char)
-        elif char == "," and depth == 0:
-            items.append("".join(current).strip())
-            current = []
-        else:
-            current.append(char)
-    if current or text.strip():
-        items.append("".join(current).strip())
-    return [item for item in items if item]
-
-
-def parse_loose_json_value(text):
-    """Parse classroom-friendly curl bodies where PowerShell stripped JSON quotes."""
-    value = text.strip()
-    if value.startswith("{") and value.endswith("}"):
-        return parse_loose_json_object(value)
-    if value.startswith("[") and value.endswith("]"):
-        inner = value[1:-1].strip()
-        if not inner:
-            return []
-        return [parse_loose_json_value(item) for item in split_top_level_csv(inner)]
-    if len(value) >= 2 and value[0] in ("'", '"') and value[-1] == value[0]:
-        return value[1:-1].replace('\\"', '"').replace("\\'", "'")
-    lowered = value.lower()
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-    if lowered == "null":
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return value
-
-
-def parse_loose_json_object(text):
-    """Accept simple {key:value} bodies produced by Windows PowerShell/curl quoting."""
-    body = text.strip()
-    if not (body.startswith("{") and body.endswith("}")):
-        raise ValueError("loose JSON body must be an object")
-    inner = body[1:-1].strip()
-    if not inner:
-        return {}
-    payload = {}
-    for item in split_top_level_csv(inner):
-        if ":" not in item:
-            raise ValueError(f"invalid loose JSON item: {item}")
-        key_text, value_text = item.split(":", 1)
-        key = parse_loose_json_value(key_text)
-        if not isinstance(key, str) or not key:
-            raise ValueError(f"invalid loose JSON key: {key_text}")
-        payload[key] = parse_loose_json_value(value_text)
-    return payload
 
 
 class RuntimeState:
@@ -607,24 +468,6 @@ def parse_args():
     parser.add_argument("--admin-port", type=int, default=None, help="Admin dashboard listen port")
     parser.add_argument("--no-admin", action="store_true", help="Disable admin dashboard")
     return parser.parse_args()
-
-
-def load_config(config_path):
-    path = Path(config_path)
-    if not path.is_absolute():
-        path = PROJECT_ROOT / path
-    if not path.exists():
-        print(f"Config file not found, using defaults: {config_path}", flush=True)
-        return {}
-    with path.open("r", encoding="utf-8") as config_file:
-        return json.load(config_file)
-
-
-def resolve_project_path(path_text):
-    path = Path(path_text)
-    if path.is_absolute():
-        return path
-    return PROJECT_ROOT / path
 
 
 def ensure_state(state_or_config=None):

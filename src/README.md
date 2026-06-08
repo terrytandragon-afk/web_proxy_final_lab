@@ -1,17 +1,31 @@
 # src 目录说明
 
-这里放代理服务器源码。当前主程序是：
+这里放代理服务器后端源码。当前命令行入口仍然是：
 
 ```text
 proxy.py
 ```
 
-当前为了便于课程验收和阅读，核心功能集中在 `proxy.py` 中，并通过函数和注释划分模块。
+为便于课程验收、阅读和继续扩展，后端开始按职责逐步拆分。当前目录结构：
+
+```text
+src/
+  proxy.py
+  webproxy/
+    __init__.py
+    config_rules.py
+```
+
+- `proxy.py`：程序入口、运行状态、代理协议处理、转发、过滤、日志、管理 API 和服务器启动。
+- `webproxy/config_rules.py`：配置文件读取、项目路径解析、规则类型定义、规则值标准化和 Windows curl 宽松 JSON 解析。
+- `webproxy/__init__.py`：标记可复用的后端模块包。
+
+此次拆分不改变启动命令、API 地址和配置格式。直接运行脚本与测试代码导入模块两种方式都受支持。
 
 ## 已实现核心函数
 
 1. `main()`：读取命令行参数。
-2. `load_config()`：读取 JSON 配置。
+2. `webproxy.config_rules.load_config()`：读取 JSON 配置。
 3. `start_server()`：监听代理端口。
 4. `handle_client()`：处理单个客户端连接。
 5. `parse_http_request()`：解析 method、host、port、path。
@@ -22,6 +36,26 @@ proxy.py
 10. `RuntimeState.add_list_rule()`：新增过滤规则并保存配置。
 11. `RuntimeState.delete_list_rule()`：删除过滤规则并保存配置。
 12. `AdminHandler`：提供前端页面和管理 API。
+
+## 模块拆分验证命令
+
+检查命令行入口：
+
+```powershell
+python src\proxy.py --help
+```
+
+检查全部 Python 文件语法：
+
+```powershell
+python -m compileall src tools tests
+```
+
+运行完整回归测试：
+
+```powershell
+python tests\run_all_smoke.py
+```
 
 ## 项目边界
 

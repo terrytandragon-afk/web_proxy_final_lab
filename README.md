@@ -47,6 +47,10 @@ web_proxy_final_lab/
     09_powershell_and_backend_echo_fix.md
   src/
     README.md
+    proxy.py
+    webproxy/
+      __init__.py
+      config_rules.py
   tests/
     manual_test_commands.md
     webroot/
