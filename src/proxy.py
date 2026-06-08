@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 try:
-    from .webproxy.audit import clear_log_files, log_event, read_log_tail
+    from .webproxy.audit import clear_log_files, log_event, query_log_entries, read_log_tail
     from .webproxy.config_rules import (
         CONFIG_SETTING_FIELDS,
         LIST_RULE_FIELDS,
@@ -26,7 +26,7 @@ try:
     )
 except ImportError:
     # Running `python src/proxy.py` adds `src` rather than the project root to sys.path.
-    from webproxy.audit import clear_log_files, log_event, read_log_tail
+    from webproxy.audit import clear_log_files, log_event, query_log_entries, read_log_tail
     from webproxy.config_rules import (
         CONFIG_SETTING_FIELDS,
         LIST_RULE_FIELDS,
@@ -43,6 +43,7 @@ except ImportError:
 BUFFER_SIZE = 8192
 DEFAULT_TIMEOUT = 10
 FRONTEND_INDEX = PROJECT_ROOT / "frontend" / "index.html"
+LOG_DETAILS_INDEX = PROJECT_ROOT / "frontend" / "logs.html"
 
 
 class RuntimeState:
@@ -484,6 +485,15 @@ def find_header(headers, name):
         if line.lower().startswith(prefix):
             return line.split(":", 1)[1].strip()
     return ""
+
+
+def parse_bounded_query_int(query, name, default, maximum):
+    """Read one integer URL query parameter without allowing invalid or huge values."""
+    try:
+        value = int(query.get(name, [str(default)])[0])
+    except (TypeError, ValueError):
+        value = default
+    return max(1, min(value, maximum))
 
 
 def parse_http_request(request_text):
@@ -1024,6 +1034,12 @@ def handle_client(client_socket, client_address, state):
                 )
                 return
             state.increment("cache_misses")
+            log_event(
+                state,
+                "CACHE_MISS",
+                f"client={client_address[0]} method={request_info['method']} "
+                f"host={request_info['host']} path={request_info['path']}",
+            )
 
         if request_info["method"] == "CONNECT":
             result = forward_connect(client_socket, request_info, config)
@@ -1096,7 +1112,10 @@ class AdminHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         if parsed.path in ("/", "/index.html"):
-            self.send_frontend()
+            self.send_frontend(FRONTEND_INDEX)
+            return
+        if parsed.path == "/logs.html":
+            self.send_frontend(LOG_DETAILS_INDEX)
             return
         if parsed.path == "/api/config":
             self.send_json({"config": self.state.get_config()})
@@ -1106,7 +1125,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/changes":
             query = parse_qs(parsed.query)
-            limit = int(query.get("limit", ["80"])[0])
+            limit = parse_bounded_query_int(query, "limit", 80, 200)
             self.send_json({"changes": self.state.get_change_history(limit)})
             return
         if parsed.path == "/api/stats":
@@ -1115,10 +1134,25 @@ class AdminHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/logs":
             query = parse_qs(parsed.query)
             kind = query.get("kind", ["proxy"])[0]
-            limit = int(query.get("limit", ["100"])[0])
-            limit = max(1, min(limit, 500))
+            limit = parse_bounded_query_int(query, "limit", 100, 500)
             logs = read_log_tail(self.state.get_config(), kind, limit)
             self.send_json({"kind": kind, "logs": logs})
+            return
+        if parsed.path == "/api/logs/query":
+            query = parse_qs(parsed.query)
+            kind = query.get("kind", ["proxy"])[0]
+            events = query.get("event", [""])[0].split(",")
+            search = query.get("search", [""])[0]
+            limit = parse_bounded_query_int(query, "limit", 200, 1000)
+            self.send_json(
+                query_log_entries(
+                    self.state.get_config(),
+                    kind=kind,
+                    events=events,
+                    search=search,
+                    limit=limit,
+                )
+            )
             return
         if parsed.path == "/api/health":
             self.send_json({"ok": True})
@@ -1195,11 +1229,12 @@ class AdminHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json({"ok": False, "error": str(error)}, status_code=400)
 
-    def send_frontend(self):
-        if not FRONTEND_INDEX.exists():
-            self.send_error(404, "frontend/index.html not found")
+    def send_frontend(self, page_path=FRONTEND_INDEX):
+        """Serve one trusted static administration page from the project frontend."""
+        if not page_path.exists():
+            self.send_error(404, f"{page_path.name} not found")
             return
-        body = FRONTEND_INDEX.read_bytes()
+        body = page_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

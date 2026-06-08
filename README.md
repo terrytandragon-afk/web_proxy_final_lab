@@ -33,6 +33,7 @@ web_proxy_final_lab/
   config.example.json
   frontend/
     index.html
+    logs.html
   docs/
     00_project_overview.md
     00_environment.md
@@ -124,6 +125,7 @@ python tools\rule_cli.py set rate_limit_per_minute 1
 python tools\rule_cli.py set rate_limit_window_seconds 60
 python tools\rule_cli.py rate-reset
 python tools\rule_cli.py changes --limit 20
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search domain_blacklist --limit 20
 ```
 
 详细说明见：
@@ -148,7 +150,7 @@ python tests\run_rule_management_smoke.py
 python tests\run_all_smoke.py
 ```
 
-批量测试会生成可由管理前端读取的访问日志、拦截日志和持久化规则变更记录。重复运行、证据位置、前端查看方式和限流值为 `1` 时的准确行为见：
+批量测试会生成可由管理前端读取的访问日志、拦截日志和持久化规则变更记录。Web 功能证据与规则管理证据使用不同目录，互不覆盖。管理台统计数字可以点击进入日志查询详情页。重复运行、证据位置、前端查看方式和限流值为 `1` 时的准确行为见：
 
 ```text
 docs/08_backend_cli_rule_management.md

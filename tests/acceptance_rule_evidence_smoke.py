@@ -11,8 +11,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 from src import proxy
 from tests.acceptance_support import (
-    CHANGE_LOG,
-    EVIDENCE_CONFIG,
+    RULE_BLOCKED_LOG,
+    RULE_CHANGE_LOG,
+    RULE_ERROR_LOG,
+    RULE_EVIDENCE_CONFIG,
+    RULE_PROXY_LOG,
     admin_request,
     build_evidence_config,
     clear_evidence_files,
@@ -69,14 +72,17 @@ def run_cli(*arguments):
 
 
 def main():
-    # Rules and modes always start from this known empty baseline.
-    clear_evidence_files(CHANGE_LOG)
-    baseline_config = build_evidence_config(PROXY_PORT, ADMIN_PORT)
-    write_evidence_config(baseline_config)
+    # Rule/mode evidence is isolated from Web-feature evidence and starts empty.
+    clear_evidence_files(RULE_PROXY_LOG, RULE_BLOCKED_LOG, RULE_ERROR_LOG, RULE_CHANGE_LOG)
+    baseline_config = build_evidence_config(PROXY_PORT, ADMIN_PORT, scope="rules")
+    write_evidence_config(baseline_config, RULE_EVIDENCE_CONFIG)
 
     upstream = ThreadingHTTPServer((HOST, UPSTREAM_PORT), RuleEvidenceHandler)
     threading.Thread(target=upstream.serve_forever, daemon=True).start()
-    state = proxy.RuntimeState(proxy.load_config(str(EVIDENCE_CONFIG)), str(EVIDENCE_CONFIG))
+    state = proxy.RuntimeState(
+        proxy.load_config(str(RULE_EVIDENCE_CONFIG)),
+        str(RULE_EVIDENCE_CONFIG),
+    )
     admin_server = proxy.start_admin_server(HOST, ADMIN_PORT, state)
     threading.Thread(
         target=proxy.start_server,
@@ -145,14 +151,17 @@ def main():
     assert any(entry.get("settings", {}).get("mode") == "whitelist" for entry in changes_payload["changes"])
 
     # Leave a safe empty baseline for the optional evidence dashboard, while retaining history.
-    write_evidence_config(build_evidence_config(PROXY_PORT, ADMIN_PORT))
+    write_evidence_config(
+        build_evidence_config(PROXY_PORT, ADMIN_PORT, scope="rules"),
+        RULE_EVIDENCE_CONFIG,
+    )
     admin_server.shutdown()
     admin_server.server_close()
 
     # Restart the admin server from disk and verify the UI APIs still expose all evidence.
     dashboard_state = proxy.RuntimeState(
-        proxy.load_config(str(EVIDENCE_CONFIG)),
-        str(EVIDENCE_CONFIG),
+        proxy.load_config(str(RULE_EVIDENCE_CONFIG)),
+        str(RULE_EVIDENCE_CONFIG),
     )
     dashboard_server = proxy.start_admin_server(HOST, ADMIN_PORT, dashboard_state)
     status, reloaded_changes = admin_request(ADMIN_PORT, "GET", "/api/changes?limit=100")
@@ -165,7 +174,7 @@ def main():
 
     print("acceptance rule evidence smoke test passed")
     print(f"persistent change entries verified: {len(changes_payload['changes'])}")
-    print(f"evidence config: {EVIDENCE_CONFIG}")
+    print(f"evidence config: {RULE_EVIDENCE_CONFIG}")
 
     dashboard_server.shutdown()
     dashboard_server.server_close()

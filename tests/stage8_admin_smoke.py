@@ -78,6 +78,16 @@ def main():
         "blocked_log_file": "tests/stage8_blocked.log",
         "error_log_file": "tests/stage8_error.log",
     }
+    # Seed deterministic records so the structured log-query API can be tested.
+    (PROJECT_ROOT / "tests" / "stage8_proxy.log").write_text(
+        "[2026-06-08 10:00:00] ALLOW client=127.0.0.1 host=demo.test path=/\n"
+        "[2026-06-08 10:00:01] BLOCK client=127.0.0.1 host=blocked.test reason=domain_blacklist\n",
+        encoding="utf-8",
+    )
+    (PROJECT_ROOT / "tests" / "stage8_blocked.log").write_text(
+        "[2026-06-08 10:00:01] BLOCK client=127.0.0.1 host=blocked.test reason=domain_blacklist\n",
+        encoding="utf-8",
+    )
     state = proxy.RuntimeState(config)
     server = proxy.start_admin_server(HOST, ADMIN_PORT, state)
 
@@ -186,6 +196,19 @@ def main():
         payload = json.loads(body.decode("utf-8"))
         assert "stats" in payload
 
+        status, body = get(
+            "/api/logs/query?kind=blocked&event=BLOCK&search=domain_blacklist&limit=10"
+        )
+        assert status == 200
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["matched"] == 1
+        assert payload["entries"][0]["event"] == "BLOCK"
+        assert payload["entries"][0]["fields"]["host"] == "blocked.test"
+
+        status, body = get("/api/logs/query?kind=proxy&limit=not-a-number")
+        assert status == 200
+        assert json.loads(body.decode("utf-8"))["kind"] == "proxy"
+
         status, body = get("/")
         assert status == 200
         assert "Web 代理服务器管理台".encode("utf-8") in body
@@ -199,6 +222,11 @@ def main():
         assert "清空缓存".encode("utf-8") in body
         assert "重置统计".encode("utf-8") in body
         assert "清空日志".encode("utf-8") in body
+
+        status, body = get("/logs.html")
+        assert status == 200
+        assert "日志查询".encode("utf-8") in body
+        assert b"/api/logs/query" in body
 
         status, body = post("/api/cache/clear")
         assert status == 200

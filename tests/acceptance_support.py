@@ -6,15 +6,26 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_DIR = PROJECT_ROOT / "tests" / "evidence"
-EVIDENCE_CONFIG = EVIDENCE_DIR / "acceptance_config.json"
-PROXY_LOG = EVIDENCE_DIR / "proxy.log"
-BLOCKED_LOG = EVIDENCE_DIR / "blocked.log"
-ERROR_LOG = EVIDENCE_DIR / "error.log"
-CHANGE_LOG = EVIDENCE_DIR / "changes.jsonl"
+WEB_EVIDENCE_DIR = EVIDENCE_DIR / "web"
+RULE_EVIDENCE_DIR = EVIDENCE_DIR / "rules"
+
+# Backward-compatible names refer to the Web/proxy feature evidence batch.
+EVIDENCE_CONFIG = WEB_EVIDENCE_DIR / "acceptance_config.json"
+PROXY_LOG = WEB_EVIDENCE_DIR / "proxy.log"
+BLOCKED_LOG = WEB_EVIDENCE_DIR / "blocked.log"
+ERROR_LOG = WEB_EVIDENCE_DIR / "error.log"
+CHANGE_LOG = WEB_EVIDENCE_DIR / "changes.jsonl"
+
+RULE_EVIDENCE_CONFIG = RULE_EVIDENCE_DIR / "acceptance_config.json"
+RULE_PROXY_LOG = RULE_EVIDENCE_DIR / "proxy.log"
+RULE_BLOCKED_LOG = RULE_EVIDENCE_DIR / "blocked.log"
+RULE_ERROR_LOG = RULE_EVIDENCE_DIR / "error.log"
+RULE_CHANGE_LOG = RULE_EVIDENCE_DIR / "changes.jsonl"
 
 
-def build_evidence_config(proxy_port, admin_port):
-    """Return a deterministic baseline used only by acceptance tests."""
+def build_evidence_config(proxy_port, admin_port, scope="web"):
+    """Return an isolated deterministic baseline for one acceptance-test batch."""
+    evidence_subdir = "rules" if scope == "rules" else "web"
     return {
         "listen_host": "127.0.0.1",
         "listen_port": proxy_port,
@@ -35,16 +46,16 @@ def build_evidence_config(proxy_port, admin_port):
         "rate_limit_per_minute": 60,
         "rate_limit_window_seconds": 60,
         "timeout_seconds": 5,
-        "log_file": "tests/evidence/proxy.log",
-        "blocked_log_file": "tests/evidence/blocked.log",
-        "error_log_file": "tests/evidence/error.log",
-        "change_log_file": "tests/evidence/changes.jsonl",
+        "log_file": f"tests/evidence/{evidence_subdir}/proxy.log",
+        "blocked_log_file": f"tests/evidence/{evidence_subdir}/blocked.log",
+        "error_log_file": f"tests/evidence/{evidence_subdir}/error.log",
+        "change_log_file": f"tests/evidence/{evidence_subdir}/changes.jsonl",
     }
 
 
-def write_evidence_config(config):
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-    EVIDENCE_CONFIG.write_text(
+def write_evidence_config(config, config_path=EVIDENCE_CONFIG):
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
         json.dumps(config, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -53,6 +64,7 @@ def write_evidence_config(config):
 def clear_evidence_files(*paths):
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
 
 
@@ -100,4 +112,3 @@ def assert_log_events(lines, event_names):
     """Assert every expected event is visible through the same lines used by the UI."""
     missing = [name for name in event_names if not any(name in line for line in lines)]
     assert not missing, f"missing log events: {missing}"
-

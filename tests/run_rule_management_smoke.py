@@ -15,9 +15,9 @@ RULE_MANAGEMENT_TESTS = [
 def main():
     result = run_smoke_batch("rule groups and runtime modes", RULE_MANAGEMENT_TESTS)
     if result == 0:
-        print("Rule evidence: tests/evidence/changes.jsonl", flush=True)
+        print("Rule evidence: tests/evidence/rules/changes.jsonl", flush=True)
         print(
-            "Evidence dashboard: python src\\proxy.py --config tests\\evidence\\acceptance_config.json",
+            "Evidence dashboard: python src\\proxy.py --config tests\\evidence\\rules\\acceptance_config.json",
             flush=True,
         )
     return result

@@ -1407,8 +1407,9 @@ http://127.0.0.1:8088/
 本节附在规则操作说明之后，用于最终验收时证明：
 
 1. 两组批量测试能够反复运行，不依赖正式配置中当前规则组是否为空。
-2. Web 功能测试会产生访问日志和拦截日志，管理前端可以读取这些记录。
+2. Web 功能测试会产生访问日志和拦截日志，管理前端可以读取并按事件查询这些记录。
 3. API 与 Python CLI 产生的规则变更会写入持久化记录，代理重启后前端仍可回显。
+4. Web 功能证据与规则/运行模式证据分别保存，后一个测试批次不会污染前一个批次。
 
 ### 1. 批量测试 Web 代理功能与日志
 
@@ -1453,7 +1454,7 @@ tests\run_web_features_smoke.py
 ```text
 PASSED batch: web/proxy features
 Passed tests: 10/10
-Web evidence: tests/evidence/proxy.log and tests/evidence/blocked.log
+Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log
 ```
 
 ### 2. 批量测试规则组修改与运行模式
@@ -1482,7 +1483,7 @@ tests\run_rule_management_smoke.py
 ```text
 PASSED batch: rule groups and runtime modes
 Passed tests: 6/6
-Rule evidence: tests/evidence/changes.jsonl
+Rule evidence: tests/evidence/rules/changes.jsonl
 ```
 
 ### 3. 一键运行全部测试
@@ -1506,6 +1507,7 @@ PASSED batch: web/proxy features
 Passed tests: 10/10
 PASSED batch: rule groups and runtime modes
 Passed tests: 6/6
+Web/proxy evidence isolation verified
 all test batches passed
 ```
 
@@ -1514,6 +1516,8 @@ all test batches passed
 - 测试只使用 `tests` 下的专用配置，不读取或修改正式 `config.example.json` 中当前存在的规则。
 - 综合 Web 测试每次先清空旧验收日志，防止旧日志让测试误通过。
 - 综合规则测试每次先重建空规则组基线，再执行增删改查，结束时恢复为空规则组。
+- Web 证据写入 `tests\evidence\web`，规则证据写入 `tests\evidence\rules`，两个批次不会覆盖彼此文件。
+- 一键测试会记录 Web 证据文件摘要，并在规则测试结束后再次比较；文件发生变化时测试直接失败。
 - 因此正式规则组原来为空、被修改过，或者连续运行多次，都不会影响测试结果。
 
 ### 5. 使用 PowerShell 查看批量测试证据
@@ -1521,19 +1525,19 @@ all test batches passed
 查看访问日志：
 
 ```powershell
-Get-Content tests\evidence\proxy.log
+Get-Content tests\evidence\web\proxy.log
 ```
 
 查看拦截日志：
 
 ```powershell
-Get-Content tests\evidence\blocked.log
+Get-Content tests\evidence\web\blocked.log
 ```
 
 查看规则与设置变更记录：
 
 ```powershell
-Get-Content tests\evidence\changes.jsonl
+Get-Content tests\evidence\rules\changes.jsonl
 ```
 
 命令解释：
@@ -1545,19 +1549,19 @@ Get-Content
 PowerShell 用于读取文本文件内容的命令。
 
 ```text
-tests\evidence\proxy.log
+tests\evidence\web\proxy.log
 ```
 
-访问总日志。应能看到 `ALLOW`、`CACHE_HIT`、`CONNECT`、`RATE_ALLOW` 等事件。
+访问总日志。应能看到 `ALLOW`、`CACHE_MISS`、`CACHE_HIT`、`CONNECT`、`RATE_ALLOW` 等事件。
 
 ```text
-tests\evidence\blocked.log
+tests\evidence\web\blocked.log
 ```
 
 拦截日志。应能看到 `BLOCK`、`FILTER`、`AUTH_REQUIRED`、`RATE_LIMIT` 等事件。
 
 ```text
-tests\evidence\changes.jsonl
+tests\evidence\rules\changes.jsonl
 ```
 
 规则与运行设置变更历史。每行是一个 JSON 对象，应能看到 `add`、`update`、`delete`、`replace`、`settings` 等操作。
@@ -1567,7 +1571,7 @@ tests\evidence\changes.jsonl
 完成全部批量测试后，启动专用证据管理端：
 
 ```powershell
-python src\proxy.py --config tests\evidence\acceptance_config.json
+python src\proxy.py --config tests\evidence\rules\acceptance_config.json
 ```
 
 命令解释：
@@ -1579,10 +1583,10 @@ src\proxy.py
 启动代理服务与管理后端。
 
 ```text
---config tests\evidence\acceptance_config.json
+--config tests\evidence\rules\acceptance_config.json
 ```
 
-指定批量测试生成的证据配置。该配置使用管理端口 `18212`，并指向 `tests\evidence` 中的日志与规则变更记录。
+指定规则管理批量测试生成的证据配置。该配置使用管理端口 `18212`，并指向 `tests\evidence\rules` 中的日志与规则变更记录。
 
 浏览器打开：
 
@@ -1650,7 +1654,64 @@ limit=200
 
 这些 API 就是管理前端读取日志和规则变更回显时使用的接口。因此命令行能够查询到记录，也说明前端刷新后能够显示记录。
 
-### 8. 限流值为 1 的准确验收行为
+### 8. 按事件和关键字查询日志
+
+查询域名黑名单拦截：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?kind=blocked&event=BLOCK&search=domain_blacklist&limit=100"
+```
+
+查询 HTTPS 隧道：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?kind=proxy&event=CONNECT&limit=100"
+```
+
+查询正文过滤和限流拦截两种事件：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?kind=blocked&event=FILTER,RATE_LIMIT&limit=100"
+```
+
+使用项目自带 Python CLI 查询域名拦截：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search domain_blacklist --limit 100
+```
+
+命令解释：
+
+- `/api/logs/query`：结构化日志查询接口。
+- `?`：开始 URL 查询参数。
+- `&`：连接多个查询参数。
+- `kind=proxy`：查询访问总日志。
+- `kind=blocked`：查询拦截日志。
+- `event=BLOCK`：只返回事件类型为 `BLOCK` 的记录；多个事件使用英文逗号分隔。
+- `search=domain_blacklist`：对整行日志执行不区分大小写的包含查询。
+- `limit=100`：最多返回最新的 100 条匹配记录。
+- `log-query`：调用相同结构化日志查询 API 的 Python CLI 子命令。
+- `--kind blocked`：CLI 参数，指定查询拦截日志。
+- `--event BLOCK`：CLI 参数，指定事件类型。
+- `--search domain_blacklist`：CLI 参数，指定全文包含条件。
+- `--limit 100`：CLI 参数，指定最大结果数。
+
+返回结果中的主要字段：
+
+- `total`：该日志文件原始记录总数。
+- `matched`：符合查询条件的记录总数。
+- `entries`：结构化结果列表。
+- `entries[].time`：事件时间。
+- `entries[].event`：事件类型。
+- `entries[].fields`：从日志中解析出的 `client`、`host`、`path`、`reason` 等字段。
+
+前端操作：
+
+```text
+打开 http://127.0.0.1:8088/，点击“域名拦截”“正文过滤”“HTTPS 隧道”等统计数字，即可进入日志详情页。详情页会自动带入对应查询条件，也可以手动修改后重新查询。
+```
+
+### 9. 限流值为 1 的准确验收行为
 
 设置 `rate_limit_per_minute=1` 表示在配置的时间窗口内：
 

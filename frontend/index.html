@@ -186,12 +186,23 @@
     }
 
     .metric {
+      display: block;
       min-height: 76px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
       padding: 12px;
       box-shadow: var(--shadow);
+      color: inherit;
+      text-decoration: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .metric:hover,
+    .metric:focus-visible {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+      outline: none;
     }
 
     .metric .label {
@@ -575,18 +586,18 @@
     };
 
     const metricDefs = [
-      ["total_requests", "总请求"],
-      ["allowed_requests", "放行"],
-      ["blocked_domain", "域名拦截"],
-      ["blocked_url", "URL 拦截"],
-      ["blocked_method", "方法拦截"],
-      ["filtered_keyword", "正文过滤"],
-      ["https_tunnels", "HTTPS 隧道"],
-      ["cache_hits", "缓存命中"],
-      ["cache_misses", "缓存未命中"],
-      ["cache_entries", "缓存条目"],
-      ["auth_required", "认证拦截"],
-      ["rate_limited", "限流拦截"]
+      { key: "total_requests", label: "总请求", kind: "proxy" },
+      { key: "allowed_requests", label: "放行", kind: "proxy", event: "ALLOW,CACHE_HIT,CONNECT" },
+      { key: "blocked_domain", label: "域名拦截", kind: "blocked", event: "BLOCK", search: "domain_" },
+      { key: "blocked_url", label: "URL 拦截", kind: "blocked", event: "BLOCK", search: "url_keyword:" },
+      { key: "blocked_method", label: "方法拦截", kind: "blocked", event: "BLOCK", search: "method_blacklist" },
+      { key: "filtered_keyword", label: "正文过滤", kind: "blocked", event: "FILTER" },
+      { key: "https_tunnels", label: "HTTPS 隧道", kind: "proxy", event: "CONNECT" },
+      { key: "cache_hits", label: "缓存命中", kind: "proxy", event: "CACHE_HIT" },
+      { key: "cache_misses", label: "缓存未命中", kind: "proxy", event: "CACHE_MISS" },
+      { key: "cache_entries", label: "缓存条目", kind: "proxy", search: "CACHE_" },
+      { key: "auth_required", label: "认证拦截", kind: "blocked", event: "AUTH_REQUIRED" },
+      { key: "rate_limited", label: "限流拦截", kind: "blocked", event: "RATE_LIMIT" }
     ];
 
     const chipKinds = {
@@ -775,11 +786,11 @@
 
     function renderStats(snapshot) {
       const stats = snapshot.stats || {};
-      const metrics = metricDefs.map(([key, label]) => `
-        <div class="metric">
-          <div class="label">${label}</div>
-          <div class="value">${escapeHtml(stats[key] || 0)}</div>
-        </div>
+      const metrics = metricDefs.map(metric => `
+        <a class="metric" href="${escapeHtml(metricLogHref(metric))}" title="查看${escapeHtml(metric.label)}日志">
+          <div class="label">${escapeHtml(metric.label)}</div>
+          <div class="value">${escapeHtml(stats[metric.key] || 0)}</div>
+        </a>
       `).join("");
       document.getElementById("metrics").innerHTML = metrics;
 
@@ -790,6 +801,14 @@
 
       renderTable("topHosts", snapshot.top_hosts || [], "暂无域名访问记录");
       renderTable("keywordHits", snapshot.keyword_hits || [], "暂无关键字命中记录");
+    }
+
+    function metricLogHref(metric) {
+      // 每个统计项对应一次只读日志查询，详情页会把查询条件和结果同时展示出来。
+      const query = new URLSearchParams({ kind: metric.kind || "proxy", title: metric.label });
+      if (metric.event) query.set("event", metric.event);
+      if (metric.search) query.set("search", metric.search);
+      return `/logs.html?${query.toString()}`;
     }
 
     function renderTable(id, rows, emptyText) {

@@ -132,6 +132,7 @@ def main():
     assert "清空缓存" in html_text
     assert "重置统计" in html_text
     assert "清空日志" in html_text
+    assert "/logs.html?" in html_text
 
     status, body = admin_get("/api/config")
     assert status == 200
@@ -160,6 +161,20 @@ def main():
     assert status == 200
     logs_payload = json.loads(body.decode("utf-8"))
     assert any("CACHE_HIT" in line or "ALLOW" in line for line in logs_payload["logs"])
+
+    status, body = admin_get("/api/logs/query?kind=proxy&event=CACHE_MISS&limit=20")
+    assert status == 200
+    query_payload = json.loads(body.decode("utf-8"))
+    assert query_payload["matched"] >= 1
+    assert all(entry["event"] == "CACHE_MISS" for entry in query_payload["entries"])
+
+    status, body = admin_get(
+        "/api/logs/query?kind=blocked&event=BLOCK&search=domain_blacklist&limit=20"
+    )
+    assert status == 200
+    query_payload = json.loads(body.decode("utf-8"))
+    assert query_payload["matched"] >= 1
+    assert query_payload["entries"][0]["fields"]["host"] == "blocked.test"
 
     print("stage12 frontend display smoke test passed")
 

@@ -57,6 +57,19 @@ def parse_args():
     logs_parser.add_argument("--kind", choices=["proxy", "blocked", "error"], default="proxy")
     logs_parser.add_argument("--limit", type=int, default=20)
 
+    log_query_parser = subparsers.add_parser(
+        "log-query",
+        help="Query structured log entries by event and text",
+    )
+    log_query_parser.add_argument(
+        "--kind",
+        choices=["proxy", "blocked", "error"],
+        default="proxy",
+    )
+    log_query_parser.add_argument("--event", default="", help="Comma-separated event names")
+    log_query_parser.add_argument("--search", default="", help="Case-insensitive full-line search")
+    log_query_parser.add_argument("--limit", type=int, default=20)
+
     changes_parser = subparsers.add_parser("changes", help="Read rule/settings change history")
     changes_parser.add_argument("--limit", type=int, default=20)
 
@@ -183,6 +196,16 @@ def main():
     elif args.command == "logs":
         query = urlencode({"kind": args.kind, "limit": args.limit})
         result = request_json(args, "GET", f"/api/logs?{query}")
+    elif args.command == "log-query":
+        query = urlencode(
+            {
+                "kind": args.kind,
+                "event": args.event,
+                "search": args.search,
+                "limit": args.limit,
+            }
+        )
+        result = request_json(args, "GET", f"/api/logs/query?{query}")
     elif args.command == "changes":
         query = urlencode({"limit": args.limit})
         result = request_json(args, "GET", f"/api/changes?{query}")

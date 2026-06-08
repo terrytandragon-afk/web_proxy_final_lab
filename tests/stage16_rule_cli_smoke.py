@@ -85,6 +85,9 @@ def run_cli(*args):
 
 
 def main():
+    for log_name in ("stage16_proxy.log", "stage16_blocked.log", "stage16_error.log"):
+        (PROJECT_ROOT / "tests" / log_name).write_text("", encoding="utf-8")
+
     config = {
         "listen_host": HOST,
         "listen_port": PROXY_PORT,
@@ -198,6 +201,20 @@ def main():
     rate_reset = run_cli("rate-reset")
     assert rate_reset["ok"] is True
     run_cli("set", "rate_limit_enabled", "false")
+
+    queried_logs = run_cli(
+        "log-query",
+        "--kind",
+        "blocked",
+        "--event",
+        "BLOCK",
+        "--search",
+        "domain_blacklist",
+        "--limit",
+        "20",
+    )
+    assert queried_logs["matched"] == 2
+    assert all(entry["event"] == "BLOCK" for entry in queried_logs["entries"])
 
     saved_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     assert saved_config["mode"] == "blacklist"

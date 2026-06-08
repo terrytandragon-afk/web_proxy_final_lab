@@ -18,7 +18,7 @@ src/
 ```
 
 - `proxy.py`：程序入口、运行状态、代理协议处理、转发、过滤、日志、管理 API 和服务器启动。
-- `webproxy/audit.py`：运行日志、拦截日志、错误日志的写入、查询和清空。
+- `webproxy/audit.py`：运行日志、拦截日志、错误日志的写入、结构化查询和清空。
 - `webproxy/config_rules.py`：配置文件读取、项目路径解析、规则类型定义、规则值标准化和 Windows curl 宽松 JSON 解析。
 - `webproxy/__init__.py`：标记可复用的后端模块包。
 

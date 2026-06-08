@@ -1516,3 +1516,29 @@ python tests\stage13_auth_smoke.py
 ```powershell
 python tests\run_all_smoke.py
 ```
+
+## 阶段 21：结构化日志查询与测试证据隔离
+
+### 实现内容
+
+- 新增 `frontend/logs.html` 日志详情页。
+- 管理台中的总请求、放行、域名/URL/方法拦截、正文过滤、HTTPS 隧道、缓存、认证和限流统计均可点击。
+- 新增 `/api/logs/query`，支持按日志类型、事件类型、全文关键字和最大返回数量查询。
+- 日志文本会解析为时间、事件、客户端、目标与详细信息，效果类似对日志数据库执行只读查询。
+- 新增 `CACHE_MISS` 事件，使“缓存未命中”统计也有可查询日志。
+- Web/代理测试证据保存到 `tests/evidence/web`，规则与运行模式证据保存到 `tests/evidence/rules`。
+- `run_all_smoke.py` 会对 Web 证据文件计算摘要，确认后续规则测试没有修改这些文件。
+
+### 验证命令
+
+```powershell
+python tests\stage8_admin_smoke.py
+python tests\stage12_frontend_display_smoke.py
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `stage8_admin_smoke.py`：验证日志详情页和结构化查询 API。
+- `stage12_frontend_display_smoke.py`：生成代理流量，并验证统计链接、`CACHE_MISS` 与拦截日志查询。
+- `run_all_smoke.py`：验证全部功能，并确认两批测试的证据文件互不影响。

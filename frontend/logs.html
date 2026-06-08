@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>日志查询 - Web Proxy Admin</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --line: #d8dee8;
+      --text: #1f2933;
+      --muted: #667085;
+      --accent: #0f766e;
+      --accent-soft: #e6f4f1;
+      --danger: #b42318;
+      --warn: #b45309;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .topbar,
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding-left: 24px;
+      padding-right: 24px;
+    }
+
+    .topbar {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    a,
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    a.back,
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 7px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    main {
+      padding-top: 20px;
+      padding-bottom: 32px;
+    }
+
+    .querybar {
+      display: grid;
+      grid-template-columns: 150px 220px minmax(220px, 1fr) 110px auto;
+      gap: 10px;
+      align-items: end;
+      padding-bottom: 18px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 10px;
+    }
+
+    .summary {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      padding: 12px 14px;
+      color: var(--muted);
+    }
+
+    .summary strong { color: var(--text); }
+
+    .table-wrap {
+      overflow: auto;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    th:nth-child(1) { width: 170px; }
+    th:nth-child(2) { width: 150px; }
+    th:nth-child(3) { width: 150px; }
+    th:nth-child(4) { width: 200px; }
+
+    td.message {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .event {
+      display: inline-block;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .event.BLOCK,
+    .event.FILTER,
+    .event.AUTH_REQUIRED,
+    .event.RATE_LIMIT,
+    .event.ERROR {
+      color: var(--danger);
+    }
+
+    .event.CACHE_HIT,
+    .event.CONNECT {
+      color: var(--warn);
+    }
+
+    .empty {
+      padding: 36px 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .error {
+      color: var(--danger);
+    }
+
+    @media (max-width: 860px) {
+      .topbar { align-items: flex-start; padding-top: 14px; padding-bottom: 14px; }
+      .querybar { grid-template-columns: 1fr 1fr; }
+      .querybar label:nth-child(3) { grid-column: 1 / -1; }
+      table { min-width: 900px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div>
+        <h1 id="pageTitle">日志查询</h1>
+        <div class="subtitle">按日志类型、事件与关键字查询代理审计记录</div>
+      </div>
+      <a class="back" href="/">返回管理台</a>
+    </div>
+  </header>
+
+  <main>
+    <form class="querybar" id="queryForm">
+      <label>日志类型
+        <select id="kindInput">
+          <option value="proxy">访问日志</option>
+          <option value="blocked">拦截日志</option>
+          <option value="error">错误日志</option>
+        </select>
+      </label>
+      <label>事件类型，逗号分隔
+        <input id="eventInput" placeholder="例如 BLOCK,FILTER">
+      </label>
+      <label>全文查询
+        <input id="searchInput" placeholder="例如 domain_blacklist 或目标域名">
+      </label>
+      <label>最大结果数
+        <input id="limitInput" type="number" min="1" max="1000" value="200">
+      </label>
+      <button class="primary" type="submit">查询</button>
+    </form>
+
+    <div class="summary" id="summary">
+      <span>正在读取日志</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>事件</th>
+            <th>客户端</th>
+            <th>目标</th>
+            <th>详细信息</th>
+          </tr>
+        </thead>
+        <tbody id="results"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>没有符合当前条件的日志</div>
+    </div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const kindInput = document.getElementById("kindInput");
+    const eventInput = document.getElementById("eventInput");
+    const searchInput = document.getElementById("searchInput");
+    const limitInput = document.getElementById("limitInput");
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function initializeQuery() {
+      kindInput.value = params.get("kind") || "proxy";
+      eventInput.value = params.get("event") || "";
+      searchInput.value = params.get("search") || "";
+      limitInput.value = params.get("limit") || "200";
+      const title = params.get("title");
+      if (title) document.getElementById("pageTitle").textContent = `${title}日志`;
+    }
+
+    function buildQuery() {
+      const query = new URLSearchParams({
+        kind: kindInput.value,
+        event: eventInput.value.trim(),
+        search: searchInput.value.trim(),
+        limit: limitInput.value || "200"
+      });
+      return query;
+    }
+
+    async function runQuery(updateUrl = false) {
+      const query = buildQuery();
+      if (updateUrl) history.replaceState(null, "", `/logs.html?${query.toString()}`);
+      const response = await fetch(`/api/logs/query?${query.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+      render(payload);
+    }
+
+    function render(payload) {
+      document.getElementById("summary").innerHTML = `
+        <span>日志类型：<strong>${escapeHtml(payload.kind)}</strong></span>
+        <span>原始记录：<strong>${escapeHtml(payload.total)}</strong></span>
+        <span>匹配记录：<strong>${escapeHtml(payload.matched)}</strong></span>
+        <span>事件条件：<strong>${escapeHtml((payload.events || []).join(", ") || "全部")}</strong></span>
+        <span>全文条件：<strong>${escapeHtml(payload.search || "无")}</strong></span>
+      `;
+
+      const rows = payload.entries || [];
+      const tbody = document.getElementById("results");
+      const empty = document.getElementById("empty");
+      empty.hidden = rows.length > 0;
+      tbody.innerHTML = rows.map(entry => {
+        const fields = entry.fields || {};
+        const target = [fields.host, fields.path].filter(Boolean).join(" ");
+        return `
+          <tr>
+            <td>${escapeHtml(entry.time)}</td>
+            <td><span class="event ${escapeHtml(entry.event)}">${escapeHtml(entry.event)}</span></td>
+            <td>${escapeHtml(fields.client || "-")}</td>
+            <td>${escapeHtml(target || "-")}</td>
+            <td class="message">${escapeHtml(entry.message)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    document.getElementById("queryForm").addEventListener("submit", event => {
+      event.preventDefault();
+      runQuery(true).catch(showError);
+    });
+
+    function showError(error) {
+      document.getElementById("summary").innerHTML = `<span class="error">查询失败：${escapeHtml(error.message)}</span>`;
+    }
+
+    initializeQuery();
+    runQuery().catch(showError);
+  </script>
+</body>
+</html>

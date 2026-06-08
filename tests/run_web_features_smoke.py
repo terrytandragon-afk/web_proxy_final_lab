@@ -19,7 +19,10 @@ WEB_FEATURE_TESTS = [
 def main():
     result = run_smoke_batch("web/proxy features", WEB_FEATURE_TESTS)
     if result == 0:
-        print("Web evidence: tests/evidence/proxy.log and tests/evidence/blocked.log", flush=True)
+        print(
+            "Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log",
+            flush=True,
+        )
     return result
 
 

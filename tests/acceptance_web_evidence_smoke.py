@@ -208,13 +208,36 @@ def main():
     assert status == 200
     assert_log_events(
         proxy_payload["logs"],
-        ["ALLOW", "CACHE_HIT", "BLOCK", "FILTER", "CONNECT", "AUTH_REQUIRED", "RATE_ALLOW", "RATE_LIMIT"],
+        [
+            "ALLOW",
+            "CACHE_MISS",
+            "CACHE_HIT",
+            "BLOCK",
+            "FILTER",
+            "CONNECT",
+            "AUTH_REQUIRED",
+            "RATE_ALLOW",
+            "RATE_LIMIT",
+        ],
     )
     status, blocked_payload = admin_request(ADMIN_PORT, "GET", "/api/logs?kind=blocked&limit=200")
     assert status == 200
     assert_log_events(blocked_payload["logs"], ["BLOCK", "FILTER", "AUTH_REQUIRED", "RATE_LIMIT"])
+    status, query_payload = admin_request(
+        ADMIN_PORT,
+        "GET",
+        "/api/logs/query?kind=blocked&event=BLOCK&search=domain_blacklist&limit=20",
+    )
+    assert status == 200 and query_payload["matched"] == 1
+    assert query_payload["entries"][0]["fields"]["host"] == "blocked.evidence.test"
+    status, tunnel_payload = admin_request(
+        ADMIN_PORT,
+        "GET",
+        "/api/logs/query?kind=proxy&event=CONNECT&limit=20",
+    )
+    assert status == 200 and tunnel_payload["matched"] == 1
     status, frontend = admin_request(ADMIN_PORT, "GET", "/")
-    assert status == 200 and b"/api/logs" in frontend
+    assert status == 200 and b"/logs.html?" in frontend
 
     print("acceptance web evidence smoke test passed")
     print(f"evidence config: {EVIDENCE_CONFIG}")
@@ -229,4 +252,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
