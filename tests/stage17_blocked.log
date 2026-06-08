@@ -1,2 +1,28 @@
 [2026-06-04 16:50:52] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
 [2026-06-04 16:51:43] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 14:25:20] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 14:26:01] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 18:59:14] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 19:01:39] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 19:03:22] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 19:25:37] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 19:25:37] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-05 19:25:37] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
+[2026-06-05 19:26:05] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 19:26:05] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-05 19:26:05] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
+[2026-06-05 19:27:37] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-05 19:27:37] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-05 19:27:37] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
+[2026-06-08 16:04:38] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-08 16:04:38] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-08 16:04:38] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
+[2026-06-08 16:30:30] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-08 16:30:30] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-08 16:30:30] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
+[2026-06-08 16:42:45] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-08 16:42:45] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-08 16:42:45] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
+[2026-06-08 16:50:00] BLOCK client=127.0.0.1 method=GET host=127.0.0.1 path=/index.txt reason=domain_not_in_whitelist
+[2026-06-08 16:50:00] AUTH_REQUIRED client=127.0.0.1 method=GET host=127.0.0.1
+[2026-06-08 16:50:00] RATE_LIMIT client=127.0.0.1 method=GET host=127.0.0.1 count=1 limit=1 retry_after=59
