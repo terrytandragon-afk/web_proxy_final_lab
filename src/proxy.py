@@ -748,6 +748,9 @@ def build_upstream_request(request_text, request_info):
         "host",
         "connection",
         "proxy-connection",
+        # Proxy credentials are only for this proxy and must never reach a website.
+        "proxy-authorization",
+        "proxy-authenticate",
         "accept-encoding",
     }
 

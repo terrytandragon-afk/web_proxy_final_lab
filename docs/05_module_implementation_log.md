@@ -1491,3 +1491,28 @@ python tests\run_all_smoke.py
 - `stage12_frontend_display_smoke.py`：验证前端所需统计与日志数据可以正常读取。
 - `acceptance_web_evidence_smoke.py`：生成并检查课程验收所需的完整日志证据。
 - `run_all_smoke.py`：验证拆分后整个项目的所有功能。
+
+## 阶段 20：代理认证凭据隔离
+
+### 实现内容
+
+- 代理仍然使用 `Proxy-Authorization` 验证客户端身份。
+- 验证成功后，转发请求时删除 `Proxy-Authorization` 和 `Proxy-Authenticate`。
+- 防止代理用户名和密码泄露给目标网站。
+- 扩展认证自动测试，由目标测试网站确认没有收到代理认证请求头。
+
+### 验证命令
+
+```powershell
+python tests\stage13_auth_smoke.py
+```
+
+命令含义：
+
+- `stage13_auth_smoke.py`：验证无认证和错误认证返回 `407`，正确认证可以访问，并验证目标网站收不到代理认证凭据。
+
+完整回归：
+
+```powershell
+python tests\run_all_smoke.py
+```

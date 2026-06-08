@@ -1107,6 +1107,27 @@ curl.exe -i -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.
 
 向代理服务器发送用户名 `student` 和密码 `123456`。
 
+代理认证安全说明：
+
+```text
+Proxy-Authorization 只用于客户端向代理服务器证明身份。代理验证成功后会删除该请求头，不会把用户名和密码转发给目标网站。
+```
+
+自动验证认证结果和凭据隔离：
+
+```powershell
+python tests\stage13_auth_smoke.py
+```
+
+该脚本依次验证：
+
+```text
+未提供认证信息时返回 407
+密码错误时返回 407
+密码正确时成功转发
+目标网站没有收到 Proxy-Authorization 请求头
+```
+
 ### 4. 热更新访问频率限制
 
 启用访问频率限制：

@@ -18,7 +18,11 @@ UPSTREAM_PORT = 19091
 
 
 class AuthTestHandler(BaseHTTPRequestHandler):
+    received_proxy_authorization = None
+
     def do_GET(self):
+        # The upstream website must not receive credentials intended for the proxy.
+        AuthTestHandler.received_proxy_authorization = self.headers.get("Proxy-Authorization")
         body = b"auth allowed page"
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -86,6 +90,7 @@ def main():
     correct_auth = request_through_proxy(basic_header("student", "123456"))
     assert "200 OK" in correct_auth
     assert "auth allowed page" in correct_auth
+    assert AuthTestHandler.received_proxy_authorization is None
 
     stats = state.snapshot()["stats"]
     assert stats["auth_required"] == 2
