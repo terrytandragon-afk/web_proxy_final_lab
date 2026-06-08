@@ -50,6 +50,7 @@ web_proxy_final_lab/
     proxy.py
     webproxy/
       __init__.py
+      audit.py
       config_rules.py
   tests/
     manual_test_commands.md

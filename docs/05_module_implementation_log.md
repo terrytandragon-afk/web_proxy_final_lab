@@ -1449,3 +1449,45 @@ python tests\run_all_smoke.py
 - `tests\stage15_rule_management_smoke.py`：验证规则增删改查和模式切换。
 - `tests\stage16_rule_cli_smoke.py`：验证后端命令行规则管理工具。
 - `tests\run_all_smoke.py`：按批次验证整个项目。
+
+## 阶段 19：日志审计模块拆分
+
+### 实现内容
+
+- 新建 `src/webproxy/audit.py`，统一负责访问日志、拦截日志和错误日志。
+- 日志模块提供写入事件、读取末尾日志、清空演示日志三个职责。
+- `src/proxy.py` 继续兼容直接启动和测试模块导入，管理前端 API 地址保持不变。
+- 认证失败与限流拒绝仍会同时记录到拦截日志，方便验收展示。
+
+### 验证命令
+
+验证管理 API：
+
+```powershell
+python tests\stage8_admin_smoke.py
+```
+
+验证前端统计和日志读取：
+
+```powershell
+python tests\stage12_frontend_display_smoke.py
+```
+
+验证日志证据包含放行、缓存、拦截、过滤、HTTPS、认证和限流事件：
+
+```powershell
+python tests\acceptance_web_evidence_smoke.py
+```
+
+运行完整项目回归：
+
+```powershell
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `stage8_admin_smoke.py`：验证管理页面、配置、统计和日志 API。
+- `stage12_frontend_display_smoke.py`：验证前端所需统计与日志数据可以正常读取。
+- `acceptance_web_evidence_smoke.py`：生成并检查课程验收所需的完整日志证据。
+- `run_all_smoke.py`：验证拆分后整个项目的所有功能。

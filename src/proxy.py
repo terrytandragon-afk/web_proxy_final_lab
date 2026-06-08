@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 try:
+    from .webproxy.audit import clear_log_files, log_event, read_log_tail
     from .webproxy.config_rules import (
         CONFIG_SETTING_FIELDS,
         LIST_RULE_FIELDS,
@@ -25,6 +26,7 @@ try:
     )
 except ImportError:
     # Running `python src/proxy.py` adds `src` rather than the project root to sys.path.
+    from webproxy.audit import clear_log_files, log_event, read_log_tail
     from webproxy.config_rules import (
         CONFIG_SETTING_FIELDS,
         LIST_RULE_FIELDS,
@@ -764,31 +766,6 @@ def build_upstream_request(request_text, request_info):
     return upstream_text.encode("iso-8859-1", errors="replace")
 
 
-def write_log_line(config, file_key, line):
-    log_path_text = config.get(file_key)
-    if not log_path_text:
-        return
-    log_path = resolve_project_path(log_path_text)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as log_file:
-        log_file.write(line + "\n")
-
-
-def log_event(state, event_type, message):
-    """统一写运行日志，同时按事件类型写入拦截日志或错误日志。"""
-    config = state.get_config()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{timestamp}] {event_type} {message}"
-    print(line, flush=True)
-
-    write_log_line(config, "log_file", line)
-    # Authentication failures and rate-limit rejections are interception events too.
-    if event_type.startswith(("BLOCK", "FILTER", "AUTH_REQUIRED", "RATE_LIMIT")):
-        write_log_line(config, "blocked_log_file", line)
-    if event_type.startswith("ERROR"):
-        write_log_line(config, "error_log_file", line)
-
-
 def forward_http(client_socket, request_text, request_info, config):
     """处理普通 HTTP 请求：连接目标服务器、转发请求、接收响应、执行正文过滤。"""
     upstream_request = build_upstream_request(request_text, request_info)
@@ -1106,38 +1083,6 @@ def handle_client(client_socket, client_address, state):
         log_event(state, "ERROR", f"client={client_address[0]} error={error}")
     finally:
         client_socket.close()
-
-
-def read_log_tail(config, kind, limit):
-    """读取日志文件末尾若干行，供管理前端展示访问/拦截/错误日志。"""
-    file_keys = {
-        "proxy": "log_file",
-        "blocked": "blocked_log_file",
-        "error": "error_log_file",
-    }
-    file_key = file_keys.get(kind, "log_file")
-    log_path_text = config.get(file_key)
-    if not log_path_text:
-        return []
-    log_path = resolve_project_path(log_path_text)
-    if not log_path.exists():
-        return []
-    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return lines[-limit:]
-
-
-def clear_log_files(config):
-    """清空配置中的三类日志文件，方便课堂现场从空日志重新演示。"""
-    cleared = []
-    for file_key in ("log_file", "blocked_log_file", "error_log_file"):
-        log_path_text = config.get(file_key)
-        if not log_path_text:
-            continue
-        log_path = resolve_project_path(log_path_text)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_path.write_text("", encoding="utf-8")
-        cleared.append(str(log_path))
-    return cleared
 
 
 class AdminHandler(BaseHTTPRequestHandler):
