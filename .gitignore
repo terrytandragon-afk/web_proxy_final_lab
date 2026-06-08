@@ -9,3 +9,5 @@ tests/stage15_*.log
 tests/stage15_rules_config.json
 tests/stage16_*.log
 tests/stage16_cli_config.json
+tests/stage14_*.log
+tests/evidence/

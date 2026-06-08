@@ -7,8 +7,7 @@
   "blocked_domains": [
     "blocked.test",
     "example-blocked.com",
-    "*.badsite.test",
-    "*.baidu.com"
+    "*.badsite.test"
   ],
   "allowed_domains": [
     "127.0.0.1",
@@ -43,5 +42,6 @@
   "rate_limit_window_seconds": 60,
   "log_file": "logs/proxy.log",
   "blocked_log_file": "logs/blocked.log",
-  "error_log_file": "logs/error.log"
+  "error_log_file": "logs/error.log",
+  "change_log_file": "logs/changes.jsonl"
 }

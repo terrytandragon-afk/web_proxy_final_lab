@@ -11,17 +11,37 @@ python -m http.server 9000
 
 ## 1.1 快速烟测
 
-不想手动打开多个终端时，可以先运行全部自动烟测：
+基础 Web/代理功能批量测试：
 
 ```powershell
 cd E:\eve_jump\web_proxy_final_lab
+python tests\run_web_features_smoke.py
+```
+
+规则组更改、模式切换和运行时设置批量测试：
+
+```powershell
+python tests\run_rule_management_smoke.py
+```
+
+运行全部测试批次：
+
+```powershell
 python tests\run_all_smoke.py
+```
+
+批量测试结束后，日志证据、规则变更证据和使用前端查看证据的方法见：
+
+```text
+docs/08_backend_cli_rule_management.md
 ```
 
 预期：
 
 ```text
-all smoke tests passed
+PASSED batch: web/proxy features
+PASSED batch: rule groups and runtime modes
+all test batches passed
 ```
 
 也可以逐个运行：
@@ -40,6 +60,7 @@ python tests\stage13_auth_smoke.py
 python tests\stage14_rate_limit_smoke.py
 python tests\stage15_rule_management_smoke.py
 python tests\stage16_rule_cli_smoke.py
+python tests\stage17_runtime_settings_smoke.py
 ```
 
 预期：
@@ -58,6 +79,7 @@ stage13 auth smoke test passed
 stage14 rate limit smoke test passed
 stage15 rule management smoke test passed
 stage16 rule cli smoke test passed
+stage17 runtime settings smoke test passed
 ```
 
 ## 2. 启动代理服务器

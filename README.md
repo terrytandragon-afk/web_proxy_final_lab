@@ -128,10 +128,25 @@ docs/08_backend_cli_rule_management.md
 docs/09_powershell_and_backend_echo_fix.md
 ```
 
-一键验证：
+分批验证：
+
+```powershell
+python tests\run_web_features_smoke.py
+python tests\run_rule_management_smoke.py
+```
+
+第一条验证基础 Web/代理功能；第二条验证规则组增删改查、模式切换和运行时设置。
+
+一键验证全部批次：
 
 ```powershell
 python tests\run_all_smoke.py
+```
+
+批量测试会生成可由管理前端读取的访问日志、拦截日志和持久化规则变更记录。重复运行、证据位置、前端查看方式和限流值为 `1` 时的准确行为见：
+
+```text
+docs/08_backend_cli_rule_management.md
 ```
 
 ## 重要边界

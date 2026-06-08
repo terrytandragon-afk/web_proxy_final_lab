@@ -33,11 +33,29 @@ docs/09_powershell_and_backend_echo_fix.md
 
 快速验证的目标是：确认所有功能模块都能正常运行。
 
-推荐只跑一条命令：
+只验证基础 Web/代理功能：
 
 ```powershell
 cd E:\eve_jump\web_proxy_final_lab
+python tests\run_web_features_smoke.py
+```
+
+只验证规则组更改、模式切换和运行时设置：
+
+```powershell
+python tests\run_rule_management_smoke.py
+```
+
+最后验证全部批次：
+
+```powershell
 python tests\run_all_smoke.py
+```
+
+这三个命令都会使用专用测试配置，不受当前正式规则组内容影响。测试证据位置、重复运行机制、前端查看命令和限流首次放行说明见：
+
+```text
+docs/08_backend_cli_rule_management.md
 ```
 
 命令含义：
@@ -58,12 +76,12 @@ python
 tests\run_all_smoke.py
 ```
 
-一键自动验收脚本。它会依次运行所有模块的 smoke test。
+一键自动验收脚本。它会依次运行基础功能批次和规则管理批次。
 
 预期输出：
 
 ```text
-all smoke tests passed
+all test batches passed
 ```
 
 如果出现失败：

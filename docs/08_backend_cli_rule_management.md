@@ -1,9 +1,10 @@
 # 08 后端命令行与逐模块验收总表
 
-本文件用于现场验收。它分成两部分：
+本文件用于现场验收。它按下面顺序组织：
 
 1. 前半部分：规则组支持的两种后端修改方式。
 2. 后半部分：原有各功能模块的逐项验证命令。
+3. 最后部分：批量测试、日志证据、前端回显和重复运行验收。
 
 重点说明：
 
@@ -564,6 +565,8 @@ http://127.0.0.1:8088/
 
 指定使用代理服务器。这里的 `8080` 是本项目代理端口。
 
+注意：小写 `-x` 表示“使用哪个代理服务器”，大写 `-X` 表示“使用哪种 HTTP 请求方法”，两者含义完全不同。
+
 ```text
 -X DELETE
 ```
@@ -896,11 +899,25 @@ python tests\stage15_rule_management_smoke.py
 python tests\stage16_rule_cli_smoke.py
 ```
 
+批量验证规则组更改、模式切换和运行时设置：
+
+```powershell
+python tests\run_rule_management_smoke.py
+```
+
+批量验证基础 Web/代理功能：
+
+```powershell
+python tests\run_web_features_smoke.py
+```
+
 一键验证全部模块：
 
 ```powershell
 python tests\run_all_smoke.py
 ```
+
+规则修改记录现在会写入配置项 `change_log_file` 指定的 JSONL 文件，代理重启后管理前端仍能回显。批量测试的重复运行机制、日志证据和前端查看方法见本文“十一、批量测试、日志证据与重复运行验收”。
 
 预期：
 
@@ -908,7 +925,9 @@ python tests\run_all_smoke.py
 stage15 rule management smoke test passed
 stage16 rule cli smoke test passed
 stage17 runtime settings smoke test passed
-all smoke tests passed
+PASSED batch: rule groups and runtime modes
+PASSED batch: web/proxy features
+all test batches passed
 ```
 
 ## 九、运行时设置热更新：白名单、代理认证、访问频率
@@ -1361,3 +1380,286 @@ http://127.0.0.1:8088/
 ```
 
 用 `curl.exe` 或 `python tools\rule_cli.py` 修改规则后，在网页管理端点击“刷新”。页面里的“规则变更回显”会显示本次变更的操作类型、规则组、旧值、新值、是否 changed、是否 saved。
+
+## 十一、批量测试、日志证据与重复运行验收
+
+本节附在规则操作说明之后，用于最终验收时证明：
+
+1. 两组批量测试能够反复运行，不依赖正式配置中当前规则组是否为空。
+2. Web 功能测试会产生访问日志和拦截日志，管理前端可以读取这些记录。
+3. API 与 Python CLI 产生的规则变更会写入持久化记录，代理重启后前端仍可回显。
+
+### 1. 批量测试 Web 代理功能与日志
+
+```powershell
+cd E:\eve_jump\web_proxy_final_lab
+python tests\run_web_features_smoke.py
+```
+
+命令解释：
+
+```text
+cd E:\eve_jump\web_proxy_final_lab
+```
+
+进入项目根目录，保证测试脚本能够找到 `src`、`frontend`、`tests` 等目录。
+
+```text
+python
+```
+
+使用当前环境中的 Python 解释器运行脚本。
+
+```text
+tests\run_web_features_smoke.py
+```
+
+运行 Web/代理功能批次。该批次验证：
+
+- 普通 HTTP 代理转发。
+- 域名黑名单拦截。
+- URL 关键字和 HTTP 方法拦截。
+- HTTP 明文正文关键字过滤。
+- HTTPS CONNECT 隧道。
+- HTTP GET 缓存。
+- 管理前端及日志 API。
+- 代理认证。
+- 访问频率限制。
+- 访问日志和拦截日志是否包含对应测试数据。
+
+预期结果：
+
+```text
+PASSED batch: web/proxy features
+Passed tests: 10/10
+Web evidence: tests/evidence/proxy.log and tests/evidence/blocked.log
+```
+
+### 2. 批量测试规则组修改与运行模式
+
+```powershell
+python tests\run_rule_management_smoke.py
+```
+
+命令解释：
+
+```text
+tests\run_rule_management_smoke.py
+```
+
+运行规则管理批次。该批次从专用空规则组基线开始，验证：
+
+- 管理 API 新增、查询、修改、删除和替换整组规则。
+- `tools\rule_cli.py` 后端命令行规则管理。
+- 黑名单与白名单模式切换。
+- 代理认证、访问频率等运行时设置热更新。
+- 规则变更记录持久化。
+- 重启管理后端后，前端 API 仍能读取规则变更记录。
+
+预期结果：
+
+```text
+PASSED batch: rule groups and runtime modes
+Passed tests: 6/6
+Rule evidence: tests/evidence/changes.jsonl
+```
+
+### 3. 一键运行全部测试
+
+```powershell
+python tests\run_all_smoke.py
+```
+
+命令解释：
+
+```text
+tests\run_all_smoke.py
+```
+
+依次运行 `run_web_features_smoke.py` 和 `run_rule_management_smoke.py`。任意子测试失败时，脚本会返回失败状态并显示失败脚本名称。
+
+最终预期：
+
+```text
+PASSED batch: web/proxy features
+Passed tests: 10/10
+PASSED batch: rule groups and runtime modes
+Passed tests: 6/6
+all test batches passed
+```
+
+### 4. 为什么批量测试可以重复运行
+
+- 测试只使用 `tests` 下的专用配置，不读取或修改正式 `config.example.json` 中当前存在的规则。
+- 综合 Web 测试每次先清空旧验收日志，防止旧日志让测试误通过。
+- 综合规则测试每次先重建空规则组基线，再执行增删改查，结束时恢复为空规则组。
+- 因此正式规则组原来为空、被修改过，或者连续运行多次，都不会影响测试结果。
+
+### 5. 使用 PowerShell 查看批量测试证据
+
+查看访问日志：
+
+```powershell
+Get-Content tests\evidence\proxy.log
+```
+
+查看拦截日志：
+
+```powershell
+Get-Content tests\evidence\blocked.log
+```
+
+查看规则与设置变更记录：
+
+```powershell
+Get-Content tests\evidence\changes.jsonl
+```
+
+命令解释：
+
+```text
+Get-Content
+```
+
+PowerShell 用于读取文本文件内容的命令。
+
+```text
+tests\evidence\proxy.log
+```
+
+访问总日志。应能看到 `ALLOW`、`CACHE_HIT`、`CONNECT`、`RATE_ALLOW` 等事件。
+
+```text
+tests\evidence\blocked.log
+```
+
+拦截日志。应能看到 `BLOCK`、`FILTER`、`AUTH_REQUIRED`、`RATE_LIMIT` 等事件。
+
+```text
+tests\evidence\changes.jsonl
+```
+
+规则与运行设置变更历史。每行是一个 JSON 对象，应能看到 `add`、`update`、`delete`、`replace`、`settings` 等操作。
+
+### 6. 使用管理前端查看批量测试证据
+
+完成全部批量测试后，启动专用证据管理端：
+
+```powershell
+python src\proxy.py --config tests\evidence\acceptance_config.json
+```
+
+命令解释：
+
+```text
+src\proxy.py
+```
+
+启动代理服务与管理后端。
+
+```text
+--config tests\evidence\acceptance_config.json
+```
+
+指定批量测试生成的证据配置。该配置使用管理端口 `18212`，并指向 `tests\evidence` 中的日志与规则变更记录。
+
+浏览器打开：
+
+```text
+http://127.0.0.1:18212/
+```
+
+前端观察点：
+
+- “访问”日志页签显示转发、缓存、HTTPS CONNECT 和限流首次放行记录。
+- “拦截”日志页签显示域名/URL/方法拦截、正文过滤、认证失败和限流拒绝。
+- “规则变更回显”显示 API 与 Python CLI 产生的规则修改记录。
+
+### 7. 使用 curl.exe 查询与前端相同的证据 API
+
+查询访问日志：
+
+```powershell
+curl.exe "http://127.0.0.1:18212/api/logs?kind=proxy&limit=200"
+```
+
+查询拦截日志：
+
+```powershell
+curl.exe "http://127.0.0.1:18212/api/logs?kind=blocked&limit=200"
+```
+
+查询规则变更记录：
+
+```powershell
+curl.exe "http://127.0.0.1:18212/api/changes?limit=100"
+```
+
+命令解释：
+
+```text
+curl.exe
+```
+
+向管理后端发送 HTTP 请求。此处没有写 `-X`，因此默认使用 `GET` 查询数据。
+
+```text
+kind=proxy
+```
+
+查询访问总日志。
+
+```text
+kind=blocked
+```
+
+查询拦截日志。
+
+```text
+limit=200
+```
+
+最多返回 200 行日志。
+
+```text
+/api/changes?limit=100
+```
+
+查询规则与运行设置变更历史，最多返回 100 条。
+
+这些 API 就是管理前端读取日志和规则变更回显时使用的接口。因此命令行能够查询到记录，也说明前端刷新后能够显示记录。
+
+### 8. 限流值为 1 的准确验收行为
+
+设置 `rate_limit_per_minute=1` 表示在配置的时间窗口内：
+
+1. 第一个通过代理认证的请求放行，访问日志记录 `RATE_ALLOW count=1 limit=1`。
+2. 第二个请求返回 `429 Too Many Requests`，拦截日志记录 `RATE_LIMIT`。
+3. `407 Proxy Authentication Required` 不会消耗正常访问额度。
+
+自动验证：
+
+```powershell
+python tests\stage14_rate_limit_smoke.py
+```
+
+浏览器通常会额外请求图标、脚本或样式，因此设置为 `1` 时，主页面请求成功后，附加请求可能立即收到 `429`。现场演示“请求多次后才拦截”时建议设置为 `3`：
+
+```powershell
+python tools\rule_cli.py set rate_limit_per_minute 3
+python tools\rule_cli.py rate-reset
+```
+
+命令解释：
+
+```text
+set rate_limit_per_minute 3
+```
+
+把每个客户端在一个时间窗口内允许的请求次数修改为 3。
+
+```text
+rate-reset
+```
+
+清空当前限流计数桶，让新的限流演示从第一个请求重新开始。

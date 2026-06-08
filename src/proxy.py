@@ -211,7 +211,37 @@ class RuntimeState:
         self.keyword_hits = {}
         self.cache = {}
         self.rate_limits = {}
-        self.change_history = []
+        # Persisted JSONL history lets the frontend show CLI/API changes after a restart.
+        self.change_history = self._load_change_history()
+
+    def _load_change_history(self):
+        """Load the newest persisted rule/settings changes for the admin frontend."""
+        path_text = self.config.get("change_log_file")
+        if not path_text:
+            return []
+        path = resolve_project_path(path_text)
+        if not path.exists():
+            return []
+
+        entries = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()[-100:]:
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict):
+                entries.append(entry)
+        return list(reversed(entries))
+
+    def _append_change_history_locked(self, entry):
+        """Append one JSONL change record. Caller must already hold self.lock."""
+        path_text = self.config.get("change_log_file")
+        if not path_text:
+            return
+        path = resolve_project_path(path_text)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as change_file:
+            change_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def get_config(self):
         with self.lock:
@@ -261,6 +291,7 @@ class RuntimeState:
                 entry[key] = result[key]
         self.change_history.insert(0, entry)
         self.change_history = self.change_history[:100]
+        self._append_change_history_locked(entry)
         return entry
 
     def add_list_rule(self, rule_type, value):
@@ -493,7 +524,7 @@ class RuntimeState:
     def check_rate_limit(self, client_ip, max_requests, window_seconds):
         """按客户端 IP 做固定时间窗口限流，返回是否允许和剩余/等待时间。"""
         if max_requests <= 0:
-            return True, 0
+            return True, 0, 0
         now = time.time()
         with self.lock:
             bucket = self.rate_limits.get(client_ip)
@@ -502,11 +533,12 @@ class RuntimeState:
                     "count": 1,
                     "reset_at": now + window_seconds,
                 }
-                return True, max_requests - 1
+                return True, 0, 1
             if bucket["count"] >= max_requests:
-                return False, int(bucket["reset_at"] - now)
+                retry_after = max(1, int(bucket["reset_at"] - now))
+                return False, retry_after, bucket["count"]
             bucket["count"] += 1
-            return True, max_requests - bucket["count"]
+            return True, 0, bucket["count"]
 
     def clear_cache(self):
         """清空缓存，方便验收时重新演示第一次 MISS、第二次 HIT。"""
@@ -520,6 +552,18 @@ class RuntimeState:
         with self.lock:
             count = len(self.rate_limits)
             self.rate_limits.clear()
+            return count
+
+    def clear_change_history(self):
+        """Clear in-memory and persisted rule/settings change history."""
+        with self.lock:
+            count = len(self.change_history)
+            self.change_history.clear()
+            path_text = self.config.get("change_log_file")
+            if path_text:
+                path = resolve_project_path(path_text)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("", encoding="utf-8")
             return count
 
     def reset_stats(self):
@@ -895,7 +939,8 @@ def log_event(state, event_type, message):
     print(line, flush=True)
 
     write_log_line(config, "log_file", line)
-    if event_type.startswith("BLOCK") or event_type.startswith("FILTER"):
+    # Authentication failures and rate-limit rejections are interception events too.
+    if event_type.startswith(("BLOCK", "FILTER", "AUTH_REQUIRED", "RATE_LIMIT")):
         write_log_line(config, "blocked_log_file", line)
     if event_type.startswith("ERROR"):
         write_log_line(config, "error_log_file", line)
@@ -1077,12 +1122,27 @@ def handle_client(client_socket, client_address, state):
         )
         print("=" * 60, flush=True)
 
+        if not check_proxy_auth(request_info, config):
+            state.increment("auth_required")
+            bytes_sent = send_auth_required_response(client_socket)
+            state.increment("bytes_to_clients", bytes_sent)
+            log_event(
+                state,
+                "AUTH_REQUIRED",
+                f"client={client_address[0]} method={request_info['method']} host={request_info['host']}",
+            )
+            return
+
+        # Count authenticated proxy requests. This keeps a 407 authentication challenge
+        # from consuming the only permitted request when the limit is set to one.
         rate_config_enabled = config.get("rate_limit_enabled", False)
         if rate_config_enabled:
-            allowed_by_rate, retry_after = state.check_rate_limit(
+            max_requests = int(config.get("rate_limit_per_minute", 60))
+            window_seconds = int(config.get("rate_limit_window_seconds", 60))
+            allowed_by_rate, retry_after, current_count = state.check_rate_limit(
                 client_address[0],
-                int(config.get("rate_limit_per_minute", 60)),
-                int(config.get("rate_limit_window_seconds", 60)),
+                max_requests,
+                window_seconds,
             )
             if not allowed_by_rate:
                 state.increment("rate_limited")
@@ -1097,20 +1157,16 @@ def handle_client(client_socket, client_address, state):
                     state,
                     "RATE_LIMIT",
                     f"client={client_address[0]} method={request_info['method']} "
-                    f"host={request_info['host']} retry_after={retry_after}",
+                    f"host={request_info['host']} count={current_count} "
+                    f"limit={max_requests} retry_after={retry_after}",
                 )
                 return
-
-        if not check_proxy_auth(request_info, config):
-            state.increment("auth_required")
-            bytes_sent = send_auth_required_response(client_socket)
-            state.increment("bytes_to_clients", bytes_sent)
             log_event(
                 state,
-                "AUTH_REQUIRED",
-                f"client={client_address[0]} method={request_info['method']} host={request_info['host']}",
+                "RATE_ALLOW",
+                f"client={client_address[0]} method={request_info['method']} "
+                f"host={request_info['host']} count={current_count} limit={max_requests}",
             )
-            return
 
         allowed, reason = check_access_policy(request_info, config)
         if not allowed:
@@ -1330,6 +1386,10 @@ class AdminHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/rate/reset":
                 cleared = self.state.clear_rate_limits()
+                self.send_json({"ok": True, "cleared": cleared})
+                return
+            if parsed.path == "/api/changes/clear":
+                cleared = self.state.clear_change_history()
                 self.send_json({"ok": True, "cleared": cleared})
                 return
             if parsed.path == "/api/stats/reset":
