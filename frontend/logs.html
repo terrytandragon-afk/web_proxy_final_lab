@@ -94,7 +94,7 @@
 
     .querybar {
       display: grid;
-      grid-template-columns: 150px 220px minmax(220px, 1fr) 110px auto;
+      grid-template-columns: 150px 220px minmax(220px, 1fr) 110px auto auto;
       gap: 10px;
       align-items: end;
       padding-bottom: 18px;
@@ -239,6 +239,7 @@
         <input id="limitInput" type="number" min="1" max="1000" value="200">
       </label>
       <button class="primary" type="submit">查询</button>
+      <button id="exportBtn" type="button">导出 CSV</button>
     </form>
 
     <div class="summary" id="summary">
@@ -337,6 +338,11 @@
     document.getElementById("queryForm").addEventListener("submit", event => {
       event.preventDefault();
       runQuery(true).catch(showError);
+    });
+
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      // The export endpoint applies the same visible query conditions as this table.
+      window.location.href = `/api/logs/export.csv?${buildQuery().toString()}`;
     });
 
     function showError(error) {

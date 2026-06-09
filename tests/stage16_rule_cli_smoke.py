@@ -19,6 +19,7 @@ PROXY_PORT = 18101
 ADMIN_PORT = 18102
 UPSTREAM_PORT = 19101
 CONFIG_PATH = PROJECT_ROOT / "tests" / "stage16_cli_config.json"
+EXPORT_PATH = PROJECT_ROOT / "tests" / "stage16_blocked_export.csv"
 
 
 class CliDemoHandler(BaseHTTPRequestHandler):
@@ -85,6 +86,8 @@ def run_cli(*args):
 
 
 def main():
+    if EXPORT_PATH.exists():
+        EXPORT_PATH.unlink()
     for log_name in ("stage16_proxy.log", "stage16_blocked.log", "stage16_error.log"):
         (PROJECT_ROOT / "tests" / log_name).write_text("", encoding="utf-8")
 
@@ -215,6 +218,25 @@ def main():
     )
     assert queried_logs["matched"] == 2
     assert all(entry["event"] == "BLOCK" for entry in queried_logs["entries"])
+
+    exported = run_cli(
+        "log-export",
+        "--kind",
+        "blocked",
+        "--event",
+        "BLOCK",
+        "--search",
+        "domain_blacklist",
+        "--limit",
+        "20",
+        "--output",
+        str(EXPORT_PATH),
+    )
+    assert exported["ok"] is True
+    exported_text = EXPORT_PATH.read_text(encoding="utf-8-sig")
+    assert "cli-block.test" in exported_text
+    assert "domain_blacklist" in exported_text
+    EXPORT_PATH.unlink()
 
     saved_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     assert saved_config["mode"] == "blacklist"

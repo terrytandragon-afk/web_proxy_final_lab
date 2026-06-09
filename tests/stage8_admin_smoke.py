@@ -209,6 +209,16 @@ def main():
         assert status == 200
         assert json.loads(body.decode("utf-8"))["kind"] == "proxy"
 
+        status, body = get(
+            "/api/logs/export.csv?kind=blocked&event=BLOCK&search=domain_blacklist&limit=10"
+        )
+        assert status == 200
+        assert body.startswith(b"\xef\xbb\xbf")
+        csv_text = body.decode("utf-8-sig")
+        assert "time,event,client,method,host,path,status,reason,keyword,message,raw" in csv_text
+        assert "blocked.test" in csv_text
+        assert "domain_blacklist" in csv_text
+
         status, body = get("/")
         assert status == 200
         assert "Web 代理服务器管理台".encode("utf-8") in body
@@ -227,6 +237,7 @@ def main():
         assert status == 200
         assert "日志查询".encode("utf-8") in body
         assert b"/api/logs/query" in body
+        assert b"/api/logs/export.csv" in body
 
         status, body = post("/api/cache/clear")
         assert status == 200

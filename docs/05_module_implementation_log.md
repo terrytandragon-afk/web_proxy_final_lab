@@ -1542,3 +1542,28 @@ python tests\run_all_smoke.py
 - `stage8_admin_smoke.py`：验证日志详情页和结构化查询 API。
 - `stage12_frontend_display_smoke.py`：生成代理流量，并验证统计链接、`CACHE_MISS` 与拦截日志查询。
 - `run_all_smoke.py`：验证全部功能，并确认两批测试的证据文件互不影响。
+
+## 阶段 22：日志 CSV 证据导出
+
+### 实现内容
+
+- 新增 `/api/logs/export.csv`，使用与结构化日志查询相同的筛选条件。
+- CSV 包含时间、事件、客户端、方法、主机、路径、状态、原因、关键字、消息和原始日志。
+- CSV 使用 UTF-8 BOM，便于 Windows Excel 正确识别中文。
+- 日志详情页新增“导出 CSV”按钮，导出当前页面的查询条件。
+- Python CLI 新增 `log-export` 子命令，可指定导出文件路径。
+- 后端、CLI 和测试代码均补充了职责注释。
+
+### 验证命令
+
+```powershell
+python tests\stage8_admin_smoke.py
+python tests\stage16_rule_cli_smoke.py
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `stage8_admin_smoke.py`：验证 CSV API 的文件头、字段名和筛选结果。
+- `stage16_rule_cli_smoke.py`：验证命令行导出 CSV 并读取其中的域名拦截证据。
+- `run_all_smoke.py`：验证新增导出功能没有影响代理、规则、运行模式与前端功能。

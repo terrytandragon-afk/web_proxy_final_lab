@@ -126,6 +126,7 @@ python tools\rule_cli.py set rate_limit_window_seconds 60
 python tools\rule_cli.py rate-reset
 python tools\rule_cli.py changes --limit 20
 python tools\rule_cli.py log-query --kind blocked --event BLOCK --search domain_blacklist --limit 20
+python tools\rule_cli.py log-export --kind blocked --event BLOCK --output exports\blocked.csv
 ```
 
 详细说明见：

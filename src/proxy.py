@@ -11,7 +11,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 try:
-    from .webproxy.audit import clear_log_files, log_event, query_log_entries, read_log_tail
+    from .webproxy.audit import (
+        build_log_csv,
+        clear_log_files,
+        log_event,
+        query_log_entries,
+        read_log_tail,
+    )
     from .webproxy.config_rules import (
         CONFIG_SETTING_FIELDS,
         LIST_RULE_FIELDS,
@@ -26,7 +32,13 @@ try:
     )
 except ImportError:
     # Running `python src/proxy.py` adds `src` rather than the project root to sys.path.
-    from webproxy.audit import clear_log_files, log_event, query_log_entries, read_log_tail
+    from webproxy.audit import (
+        build_log_csv,
+        clear_log_files,
+        log_event,
+        query_log_entries,
+        read_log_tail,
+    )
     from webproxy.config_rules import (
         CONFIG_SETTING_FIELDS,
         LIST_RULE_FIELDS,
@@ -1154,6 +1166,25 @@ class AdminHandler(BaseHTTPRequestHandler):
                 )
             )
             return
+        if parsed.path == "/api/logs/export.csv":
+            query = parse_qs(parsed.query)
+            kind = query.get("kind", ["proxy"])[0]
+            events = query.get("event", [""])[0].split(",")
+            search = query.get("search", [""])[0]
+            limit = parse_bounded_query_int(query, "limit", 1000, 5000)
+            result = query_log_entries(
+                self.state.get_config(),
+                kind=kind,
+                events=events,
+                search=search,
+                limit=limit,
+            )
+            self.send_bytes(
+                build_log_csv(result),
+                "text/csv; charset=utf-8",
+                filename=f"{result['kind']}_logs.csv",
+            )
+            return
         if parsed.path == "/api/health":
             self.send_json({"ok": True})
             return
@@ -1267,8 +1298,14 @@ class AdminHandler(BaseHTTPRequestHandler):
 
     def send_json(self, payload, status_code=200):
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        self.send_bytes(body, "application/json; charset=utf-8", status_code=status_code)
+
+    def send_bytes(self, body, content_type, status_code=200, filename=""):
+        """Send a byte response; filename enables browser downloads for exported evidence."""
         self.send_response(status_code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

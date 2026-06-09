@@ -1,4 +1,6 @@
+import csv
 from datetime import datetime
+import io
 import re
 
 from .config_rules import resolve_project_path
@@ -13,6 +15,20 @@ LOG_FILE_KEYS = {
 LOG_LINE_PATTERN = re.compile(
     r"^\[(?P<time>[^\]]+)\]\s+(?P<event>[A-Z_]+)(?:\s+(?P<message>.*))?$"
 )
+
+CSV_FIELD_NAMES = [
+    "time",
+    "event",
+    "client",
+    "method",
+    "host",
+    "path",
+    "status",
+    "reason",
+    "keyword",
+    "message",
+    "raw",
+]
 
 
 def write_log_line(config, file_key, line):
@@ -119,6 +135,33 @@ def query_log_entries(config, kind="proxy", events=None, search="", limit=200):
         # Detail pages are easier to scan with the newest event first.
         "entries": list(reversed(matched_entries[-bounded_limit:])),
     }
+
+
+def build_log_csv(query_result):
+    """Serialize structured query results as an Excel-friendly UTF-8 CSV file."""
+    text_buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(text_buffer, fieldnames=CSV_FIELD_NAMES)
+    writer.writeheader()
+    for entry in query_result.get("entries", []):
+        fields = entry.get("fields", {})
+        # Keep common audit fields in dedicated columns while retaining raw evidence.
+        writer.writerow(
+            {
+                "time": entry.get("time", ""),
+                "event": entry.get("event", ""),
+                "client": fields.get("client", ""),
+                "method": fields.get("method", ""),
+                "host": fields.get("host", ""),
+                "path": fields.get("path", ""),
+                "status": fields.get("status", ""),
+                "reason": fields.get("reason", ""),
+                "keyword": fields.get("keyword", ""),
+                "message": entry.get("message", ""),
+                "raw": entry.get("raw", ""),
+            }
+        )
+    # utf-8-sig adds a BOM so Windows Excel recognizes Chinese text without prompts.
+    return text_buffer.getvalue().encode("utf-8-sig")
 
 
 def clear_log_files(config):

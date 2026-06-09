@@ -1711,7 +1711,58 @@ python tools\rule_cli.py log-query --kind blocked --event BLOCK --search domain_
 打开 http://127.0.0.1:8088/，点击“域名拦截”“正文过滤”“HTTPS 隧道”等统计数字，即可进入日志详情页。详情页会自动带入对应查询条件，也可以手动修改后重新查询。
 ```
 
-### 9. 限流值为 1 的准确验收行为
+### 9. 导出日志查询结果为 CSV
+
+使用 `curl.exe` 导出域名拦截日志：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/export.csv?kind=blocked&event=BLOCK&search=domain_blacklist&limit=1000" -o exports\domain_blocked.csv
+```
+
+使用项目自带 Python CLI 导出：
+
+```powershell
+python tools\rule_cli.py log-export --kind blocked --event BLOCK --search domain_blacklist --limit 1000 --output exports\domain_blocked.csv
+```
+
+导出 HTTPS 隧道记录：
+
+```powershell
+python tools\rule_cli.py log-export --kind proxy --event CONNECT --output exports\https_tunnels.csv
+```
+
+命令解释：
+
+- `/api/logs/export.csv`：CSV 日志导出接口，查询参数与 `/api/logs/query` 一致。
+- `-o exports\domain_blocked.csv`：`curl.exe` 把服务器返回内容写入指定文件，而不是输出到终端。
+- `log-export`：Python CLI 的日志导出子命令。
+- `--output exports\domain_blocked.csv`：指定 CSV 文件保存路径；目录不存在时 CLI 会自动创建。
+- `--kind blocked`：选择拦截日志。
+- `--event BLOCK`：只导出 `BLOCK` 事件。
+- `--search domain_blacklist`：只导出包含域名黑名单原因的记录。
+- `--limit 1000`：最多导出最新的 1000 条匹配记录。
+
+CSV 字段说明：
+
+- `time`：日志产生时间。
+- `event`：事件类型，例如 `BLOCK`、`FILTER`、`CONNECT`。
+- `client`：客户端 IP。
+- `method`：HTTP 请求方法。
+- `host`：目标主机。
+- `path`：请求路径。
+- `status`：响应状态码。
+- `reason`：拦截原因。
+- `keyword`：命中的正文关键字。
+- `message`：日志详细消息。
+- `raw`：原始日志行，便于保留完整验收证据。
+
+前端导出：
+
+```text
+进入日志详情页，设置日志类型、事件和全文查询条件，点击“导出 CSV”。导出的内容与当前查询条件一致。
+```
+
+### 10. 限流值为 1 的准确验收行为
 
 设置 `rate_limit_per_minute=1` 表示在配置的时间窗口内：
 

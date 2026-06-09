@@ -1,6 +1,7 @@
 import argparse
 import http.client
 import json
+from pathlib import Path
 import sys
 from urllib.parse import urlencode
 
@@ -70,6 +71,16 @@ def parse_args():
     log_query_parser.add_argument("--search", default="", help="Case-insensitive full-line search")
     log_query_parser.add_argument("--limit", type=int, default=20)
 
+    log_export_parser = subparsers.add_parser(
+        "log-export",
+        help="Export queried logs to a CSV file",
+    )
+    log_export_parser.add_argument("--kind", choices=["proxy", "blocked", "error"], default="proxy")
+    log_export_parser.add_argument("--event", default="", help="Comma-separated event names")
+    log_export_parser.add_argument("--search", default="", help="Case-insensitive full-line search")
+    log_export_parser.add_argument("--limit", type=int, default=1000)
+    log_export_parser.add_argument("--output", required=True, help="CSV output file path")
+
     changes_parser = subparsers.add_parser("changes", help="Read rule/settings change history")
     changes_parser.add_argument("--limit", type=int, default=20)
 
@@ -99,6 +110,18 @@ def request_json(args, method, path, payload=None):
         print_json({"ok": False, "status": response.status, "response": data})
         raise SystemExit(1)
     return data
+
+
+def request_bytes(args, method, path):
+    """Download a non-JSON admin response, currently used for CSV evidence export."""
+    connection = http.client.HTTPConnection(args.admin_host, args.admin_port, timeout=10)
+    connection.request(method, path)
+    response = connection.getresponse()
+    response_body = response.read()
+    connection.close()
+    if response.status >= 400:
+        raise SystemExit(f"admin request failed: {response.status}")
+    return response_body
 
 
 def print_json(payload):
@@ -206,6 +229,20 @@ def main():
             }
         )
         result = request_json(args, "GET", f"/api/logs/query?{query}")
+    elif args.command == "log-export":
+        query = urlencode(
+            {
+                "kind": args.kind,
+                "event": args.event,
+                "search": args.search,
+                "limit": args.limit,
+            }
+        )
+        csv_bytes = request_bytes(args, "GET", f"/api/logs/export.csv?{query}")
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(csv_bytes)
+        result = {"ok": True, "output": str(output_path), "bytes": len(csv_bytes)}
     elif args.command == "changes":
         query = urlencode({"limit": args.limit})
         result = request_json(args, "GET", f"/api/changes?{query}")
