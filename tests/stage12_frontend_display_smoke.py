@@ -129,6 +129,7 @@ def main():
     assert "HTTPS 隧道" in html_text
     assert "认证拦截" in html_text
     assert "限流拦截" in html_text
+    assert "客户端拦截" in html_text
     assert "清空缓存" in html_text
     assert "重置统计" in html_text
     assert "清空日志" in html_text
@@ -144,6 +145,7 @@ def main():
     assert status == 200
     rules_payload = json.loads(body.decode("utf-8"))
     assert any(group["type"] == "blocked_domains" for group in rules_payload["groups"])
+    assert any(group["type"] == "blocked_client_ips" for group in rules_payload["groups"])
     assert any(group["type"] == "blocked_content_keywords" for group in rules_payload["groups"])
 
     status, body = admin_get("/api/stats")

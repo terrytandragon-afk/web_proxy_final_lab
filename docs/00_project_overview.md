@@ -404,6 +404,31 @@ stage16 rule cli smoke test passed
 stage17 runtime settings smoke test passed
 ```
 
+## 六、最新完善：客户端 IP/CIDR 访问控制
+
+系统现在不仅能控制客户端访问哪些网站，还能控制哪些客户端可以使用代理：
+
+- `blocked_client_ips`：客户端 IP 黑名单，命中后返回 `403 Forbidden`。
+- `allowed_client_ips`：客户端 IP 白名单；列表非空时，未命中的客户端被拒绝。
+- 支持单个 IPv4/IPv6 地址和 CIDR 网段。
+- 规则可通过前端、管理 API 和 Python CLI 实时增删改查，无需重启代理。
+- 拦截原因记录为 `client_ip_blacklist` 或 `client_ip_not_allowed`。
+- 前端提供独立的“客户端拦截”统计和日志详情入口。
+
+验证命令：
+
+```powershell
+python tests\stage18_client_ip_policy_smoke.py
+```
+
+后续扩展建议按价值排序：
+
+1. `P1` 规则配置导入、导出与版本回滚，适合课堂展示配置备份。
+2. `P1` 管理端登录认证，避免局域网内其他用户修改代理规则。
+3. `P2` 定时规则，例如仅在指定时间段启用某组拦截规则。
+4. `P2` SQLite 持久化审计，用于更大规模的分页、聚合和趋势查询。
+5. `P3` HTTPS MITM 正文过滤，仅适合受控实验环境，不建议作为基础功能。
+
 ## 六、前端展示验收
 
 前端管理台地址：

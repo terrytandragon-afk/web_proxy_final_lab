@@ -180,7 +180,7 @@
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(12, minmax(92px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
       gap: 12px;
       margin-bottom: 16px;
     }
@@ -627,6 +627,7 @@
       { key: "total_requests", label: "总请求", kind: "proxy" },
       { key: "allowed_requests", label: "放行", kind: "proxy", event: "ALLOW,CACHE_HIT,CONNECT" },
       { key: "blocked_domain", label: "域名拦截", kind: "blocked", event: "BLOCK", search: "domain_" },
+      { key: "blocked_client", label: "客户端拦截", kind: "blocked", event: "BLOCK", search: "client_ip_" },
       { key: "blocked_url", label: "URL 拦截", kind: "blocked", event: "BLOCK", search: "url_keyword:" },
       { key: "blocked_method", label: "方法拦截", kind: "blocked", event: "BLOCK", search: "method_blacklist" },
       { key: "filtered_keyword", label: "正文过滤", kind: "blocked", event: "FILTER" },
@@ -641,6 +642,8 @@
     const chipKinds = {
       blocked_domains: "danger",
       allowed_domains: "ok",
+      blocked_client_ips: "danger",
+      allowed_client_ips: "ok",
       blocked_url_keywords: "warn",
       blocked_content_keywords: "danger",
       blocked_methods: "warn"
@@ -678,6 +681,9 @@
       // 域名规则必须显式表达匹配范围，避免短词 baidu 误拦其他无关域名。
       if (ruleType === "blocked_domains" || ruleType === "allowed_domains") {
         return "示例：baidu.com 匹配 baidu.com 和 www.baidu.com；*.baidu.com 匹配子域名；*baidu* 是包含匹配，范围更宽，慎用；baidu 不会自动当关键词。";
+      }
+      if (ruleType === "blocked_client_ips" || ruleType === "allowed_client_ips") {
+        return "支持单个地址与 CIDR 网段，例如 192.168.1.20、192.168.1.0/24、2001:db8::/32；客户端黑名单优先于白名单。";
       }
       return "";
     }

@@ -1,6 +1,7 @@
 import argparse
 import base64
 import fnmatch
+import ipaddress
 import json
 import select
 import socket
@@ -81,6 +82,7 @@ class RuntimeState:
             "total_requests": 0,
             "allowed_requests": 0,
             "blocked_domain": 0,
+            "blocked_client": 0,
             "blocked_url": 0,
             "blocked_method": 0,
             "filtered_keyword": 0,
@@ -646,6 +648,40 @@ def domain_matches(host, patterns):
     return False
 
 
+def client_ip_matches(client_ip, patterns):
+    """Match a client address against normalized single-IP and CIDR rules."""
+    try:
+        address = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
+    for pattern in patterns:
+        try:
+            if address == ipaddress.ip_address(pattern):
+                return True
+            continue
+        except ValueError:
+            pass
+        try:
+            if address in ipaddress.ip_network(pattern, strict=False):
+                return True
+        except ValueError:
+            # A manually edited invalid configuration entry is ignored safely.
+            continue
+    return False
+
+
+def check_client_access_policy(client_ip, config):
+    """Apply client allow/deny lists before authentication and target filtering."""
+    blocked_clients = config.get("blocked_client_ips", [])
+    if client_ip_matches(client_ip, blocked_clients):
+        return False, "client_ip_blacklist"
+
+    allowed_clients = config.get("allowed_client_ips", [])
+    if allowed_clients and not client_ip_matches(client_ip, allowed_clients):
+        return False, "client_ip_not_allowed"
+    return True, "allow"
+
+
 def check_access_policy(request_info, config):
     """执行访问控制：方法黑名单、白名单模式、域名黑名单和 URL 关键字拦截。"""
     host = request_info["host"]
@@ -938,7 +974,9 @@ def forward_connect(client_socket, request_info, config):
 
 def update_block_stats(state, reason):
     """根据拦截原因更新对应统计项。"""
-    if reason.startswith("url_keyword:"):
+    if reason.startswith("client_ip_"):
+        state.increment("blocked_client")
+    elif reason.startswith("url_keyword:"):
         state.increment("blocked_url")
     elif reason == "method_blacklist":
         state.increment("blocked_method")
@@ -977,6 +1015,21 @@ def handle_client(client_socket, client_address, state):
             flush=True,
         )
         print("=" * 60, flush=True)
+
+        # Client network policy runs before authentication and rate limiting so a
+        # denied machine cannot consume credentials or rate-limit capacity.
+        client_allowed, client_reason = check_client_access_policy(client_address[0], config)
+        if not client_allowed:
+            update_block_stats(state, client_reason)
+            bytes_sent = send_simple_response(client_socket, 403, "Forbidden", client_reason)
+            state.increment("bytes_to_clients", bytes_sent)
+            log_event(
+                state,
+                "BLOCK",
+                f"client={client_address[0]} method={request_info['method']} "
+                f"host={request_info['host']} path={request_info['path']} reason={client_reason}",
+            )
+            return
 
         if not check_proxy_auth(request_info, config):
             state.increment("auth_required")
@@ -1378,6 +1431,7 @@ def start_server(host, port, state=None):
     print("Proxy features: forwarding, HTTPS CONNECT, domain blocking, URL/method blocking, keyword filtering.", flush=True)
     print(f"Mode: {config.get('mode', 'blacklist')}", flush=True)
     print(f"Blocked domains: {len(config.get('blocked_domains', []))}", flush=True)
+    print(f"Blocked client IP rules: {len(config.get('blocked_client_ips', []))}", flush=True)
     print(f"Blocked URL keywords: {len(config.get('blocked_url_keywords', []))}", flush=True)
     print(f"Blocked content keywords: {len(config.get('blocked_content_keywords', []))}", flush=True)
     print("Press Ctrl+C to stop.", flush=True)

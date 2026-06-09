@@ -8,6 +8,7 @@ RULE_MANAGEMENT_TESTS = [
     "stage15_rule_management_smoke.py",
     "stage16_rule_cli_smoke.py",
     "stage17_runtime_settings_smoke.py",
+    "stage18_client_ip_policy_smoke.py",
     "acceptance_rule_evidence_smoke.py",
 ]
 

@@ -47,7 +47,7 @@
   <main>
     <form class="querybar" id="queryForm">
       <label>操作类型<select id="actionInput"><option value="">全部操作</option><option value="add">新增</option><option value="update">修改</option><option value="delete">删除</option><option value="replace">替换整组</option><option value="settings">运行设置</option></select></label>
-      <label>规则组<select id="ruleTypeInput"><option value="">全部规则组</option><option value="blocked_domains">域名黑名单</option><option value="allowed_domains">域名白名单</option><option value="blocked_url_keywords">URL 关键词</option><option value="blocked_content_keywords">正文关键词</option><option value="blocked_methods">禁止 HTTP 方法</option><option value="settings">运行设置</option></select></label>
+      <label>规则组<select id="ruleTypeInput"><option value="">全部规则组</option><option value="blocked_domains">域名黑名单</option><option value="allowed_domains">域名白名单</option><option value="blocked_client_ips">客户端 IP 黑名单</option><option value="allowed_client_ips">客户端 IP 白名单</option><option value="blocked_url_keywords">URL 关键词</option><option value="blocked_content_keywords">正文关键词</option><option value="blocked_methods">禁止 HTTP 方法</option><option value="settings">运行设置</option></select></label>
       <label>全文查询<input id="searchInput" placeholder="例如 whitelist、cli-evidence"></label>
       <label>最大结果数<input id="limitInput" type="number" min="1" max="1000" value="200"></label>
       <button class="primary" type="submit">查询</button>

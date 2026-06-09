@@ -99,6 +99,8 @@ def main():
         "mode": "blacklist",
         "blocked_domains": [],
         "allowed_domains": [],
+        "blocked_client_ips": [],
+        "allowed_client_ips": [],
         "blocked_url_keywords": [],
         "blocked_content_keywords": [],
         "blocked_methods": [],
@@ -131,6 +133,7 @@ def main():
 
     listed = run_cli("list")
     assert any(group["type"] == "blocked_content_keywords" for group in listed["groups"])
+    assert any(group["type"] == "blocked_client_ips" for group in listed["groups"])
 
     added = run_cli("add", "blocked_content_keywords", "classroom")
     assert "classroom" in added["values"]
@@ -182,6 +185,20 @@ def main():
     whitelist_blocked = proxy_request(request_line("GET", local_url, local_host))
     assert "domain_not_in_whitelist" in whitelist_blocked
     run_cli("set", "mode", "blacklist")
+
+    # Generic CLI CRUD also manages client IP/CIDR rules and changes runtime policy.
+    client_added = run_cli("add", "blocked_client_ips", "127.0.0.99/24")
+    assert client_added["value"] == "127.0.0.0/24"
+    assert "client_ip_blacklist" in proxy_request(request_line("GET", local_url, local_host))
+    client_updated = run_cli(
+        "update",
+        "blocked_client_ips",
+        "127.0.0.0/24",
+        "10.0.0.0/8",
+    )
+    assert "10.0.0.0/8" in client_updated["values"]
+    assert "command line rule demo" in proxy_request(request_line("GET", local_url, local_host))
+    run_cli("delete", "blocked_client_ips", "10.0.0.0/8")
 
     changes = run_cli("changes", "--limit", "30")
     assert any(item["action"] == "add" for item in changes["changes"])
@@ -243,6 +260,8 @@ def main():
     assert saved_config["blocked_content_keywords"] == []
     assert saved_config["blocked_url_keywords"] == []
     assert saved_config["blocked_domains"] == []
+    assert saved_config["blocked_client_ips"] == []
+    assert saved_config["allowed_client_ips"] == []
 
     print("stage16 rule cli smoke test passed")
 

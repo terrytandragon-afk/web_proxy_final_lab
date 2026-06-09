@@ -1,3 +1,4 @@
+import ipaddress
 import json
 from pathlib import Path
 
@@ -15,6 +16,16 @@ LIST_RULE_FIELDS = {
         "title": "域名白名单",
         "description": "白名单模式下只有这些域名允许访问，匹配方式与域名黑名单一致。",
         "value_label": "允许访问的域名或通配符",
+    },
+    "blocked_client_ips": {
+        "title": "客户端 IP 黑名单",
+        "description": "拒绝指定客户端使用代理，支持单个 IPv4/IPv6 地址和 CIDR 网段，例如 192.168.1.20、10.0.0.0/8。",
+        "value_label": "客户端 IP 或 CIDR 网段",
+    },
+    "allowed_client_ips": {
+        "title": "客户端 IP 白名单",
+        "description": "列表非空时，仅允许匹配的客户端使用代理；客户端 IP 黑名单仍具有更高优先级。",
+        "value_label": "允许的客户端 IP 或 CIDR 网段",
     },
     "blocked_url_keywords": {
         "title": "URL 关键字",
@@ -73,6 +84,15 @@ def normalize_rule_value(rule_type, value):
         raise ValueError("rule value cannot be empty")
     if rule_type in ("blocked_domains", "allowed_domains"):
         return normalized.lower().strip(".")
+    if rule_type in ("blocked_client_ips", "allowed_client_ips"):
+        try:
+            # Keep a single host readable; normalize CIDR host bits with strict=False.
+            return str(ipaddress.ip_address(normalized))
+        except ValueError:
+            try:
+                return str(ipaddress.ip_network(normalized, strict=False))
+            except ValueError as error:
+                raise ValueError(f"invalid client IP or CIDR: {normalized}") from error
     if rule_type == "blocked_methods":
         return normalized.upper()
     return normalized

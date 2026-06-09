@@ -14,6 +14,8 @@
     "localhost",
     "example.com"
   ],
+  "blocked_client_ips": [],
+  "allowed_client_ips": [],
   "blocked_url_keywords": [],
   "blocked_content_keywords": [
     "forbidden",

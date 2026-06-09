@@ -138,6 +138,8 @@ def main():
         "www.cli-evidence.test",
     )
     run_cli("delete", "blocked_domains", "*cli-evidence*")
+    run_cli("add", "blocked_client_ips", "10.20.30.99/24")
+    run_cli("delete", "blocked_client_ips", "10.20.30.0/24")
     run_cli("set", "rate_limit_per_minute", "3")
     run_cli("set", "rate_limit_enabled", "true")
     run_cli("rate-reset")
@@ -148,6 +150,7 @@ def main():
     actions = {entry["action"] for entry in changes_payload["changes"]}
     assert {"add", "update", "delete", "replace", "settings"} <= actions
     assert any(entry.get("rule_type") == "blocked_domains" for entry in changes_payload["changes"])
+    assert any(entry.get("rule_type") == "blocked_client_ips" for entry in changes_payload["changes"])
     assert any(entry.get("settings", {}).get("mode") == "whitelist" for entry in changes_payload["changes"])
 
     # Leave a safe empty baseline for the optional evidence dashboard, while retaining history.

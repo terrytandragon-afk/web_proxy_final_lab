@@ -274,3 +274,20 @@ HTTP 代理转发 + 域名拦截 + 网页关键字过滤
 配置文件 + 日志 + 多线程 + URL 关键字拦截 + HTTPS CONNECT 域名拦截
 ```
 
+## 已完成扩展：动态客户端 IP/CIDR 规则
+
+原来的“客户端 IP 限制”只通过监听 `127.0.0.1` 限制外部连接。现在已经补充真正的运行时客户端访问控制：
+
+- 客户端 IP 黑名单：拒绝指定主机或整个 CIDR 网段。
+- 客户端 IP 白名单：列表非空时，只允许匹配的客户端。
+- 支持前端、API、CLI 热更新。
+- 支持拦截统计、日志查询和 CSV 导出。
+- 支持 IPv4 与 IPv6 规则校验和标准化。
+
+验收命令：
+
+```powershell
+python tests\stage18_client_ip_policy_smoke.py
+python tools\rule_cli.py add blocked_client_ips 192.168.1.0/24
+python tools\rule_cli.py delete blocked_client_ips 192.168.1.0/24
+```

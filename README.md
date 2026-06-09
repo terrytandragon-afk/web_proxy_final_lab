@@ -169,3 +169,17 @@ python src\proxy.py --config config.example.json
 
 普通代理可以过滤 **HTTP 明文网页内容**。  
 对于 **HTTPS**，普通代理只能看到 CONNECT 请求里的目标域名，不能直接看到网页正文，所以可以做 HTTPS 域名拦截，但不建议把 HTTPS 正文过滤作为基础要求。
+
+## 客户端 IP/CIDR 访问控制
+
+代理支持动态管理客户端 IP 黑名单和白名单，规则支持单个 IPv4/IPv6 地址与 CIDR 网段：
+
+```powershell
+python tools\rule_cli.py add blocked_client_ips 192.168.1.0/24
+python tools\rule_cli.py delete blocked_client_ips 192.168.1.0/24
+python tools\rule_cli.py add allowed_client_ips 127.0.0.1
+python tools\rule_cli.py delete allowed_client_ips 127.0.0.1
+python tests\stage18_client_ip_policy_smoke.py
+```
+
+客户端黑名单优先于白名单；白名单非空时，仅匹配白名单的客户端可以使用代理。管理前端统计区使用自适应布局，并提供可点击的“客户端拦截”日志查询。

@@ -1933,3 +1933,169 @@ rate-reset
 ```
 
 清空当前限流计数桶，让新的限流演示从第一个请求重新开始。
+
+## 十三、客户端 IP/CIDR 访问控制验收
+
+### 1. 功能和优先级
+
+客户端访问控制用于决定“谁能使用代理”，与域名规则决定“能访问什么网站”不同：
+
+- `blocked_client_ips`：客户端黑名单，命中后返回 `403 Forbidden`。
+- `allowed_client_ips`：客户端白名单；列表非空时，未命中的客户端返回 `403 Forbidden`。
+- 黑名单优先于白名单。
+- 支持单个 IPv4、IPv6 地址和 CIDR 网段。
+- 命中原因分别记录为 `client_ip_blacklist` 和 `client_ip_not_allowed`。
+- 客户端规则只作用于代理端口 `8080`，管理端口 `8088` 仍可用于恢复规则。
+
+### 2. 使用 Python CLI 增删改查
+
+查询全部规则组：
+
+```powershell
+python tools\rule_cli.py list
+```
+
+新增客户端网段黑名单：
+
+```powershell
+python tools\rule_cli.py add blocked_client_ips 192.168.1.0/24
+```
+
+修改客户端网段黑名单：
+
+```powershell
+python tools\rule_cli.py update blocked_client_ips 192.168.1.0/24 192.168.2.0/24
+```
+
+删除客户端网段黑名单：
+
+```powershell
+python tools\rule_cli.py delete blocked_client_ips 192.168.2.0/24
+```
+
+新增和删除客户端白名单：
+
+```powershell
+python tools\rule_cli.py add allowed_client_ips 127.0.0.1
+python tools\rule_cli.py delete allowed_client_ips 127.0.0.1
+```
+
+命令含义：
+
+- `python`：使用当前环境的 Python 解释器。
+- `tools\rule_cli.py`：调用正在运行的 `8088` 管理 API。
+- `list`：查询所有可编辑规则组。
+- `add`：向指定规则组新增一条规则。
+- `update`：把旧规则修改为新规则。
+- `delete`：从指定规则组删除规则。
+- `blocked_client_ips`：客户端 IP/CIDR 黑名单规则组。
+- `allowed_client_ips`：客户端 IP/CIDR 白名单规则组。
+- `192.168.1.0/24`：CIDR 网段，表示 `192.168.1.0` 到 `192.168.1.255`。
+- `127.0.0.1`：单个 IPv4 地址。
+
+输入 `127.0.0.99/24` 时，后端会标准化保存为 `127.0.0.0/24`。输入 `not-an-ip` 等非法值时，后端返回 `400`，不会写入配置。
+
+### 3. 使用 PowerShell curl.exe 增删规则
+
+新增本机网段黑名单：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8088/api/rules/add -H "Content-Type: application/json" -d "{`"rule_type`":`"blocked_client_ips`",`"value`":`"127.0.0.0/24`"}"
+```
+
+删除本机网段黑名单：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8088/api/rules/delete -H "Content-Type: application/json" -d "{`"rule_type`":`"blocked_client_ips`",`"value`":`"127.0.0.0/24`"}"
+```
+
+参数含义：
+
+- `curl.exe`：Windows 命令行 HTTP 客户端。
+- `-X POST`：明确使用 HTTP `POST` 方法修改后端状态。
+- `/api/rules/add`：新增规则 API。
+- `/api/rules/delete`：删除规则 API。
+- `-H "Content-Type: application/json"`：声明请求体为 JSON。
+- `-d`：发送后面的 JSON 请求体。
+- PowerShell 中的 `` ` ``：转义 JSON 内部双引号。
+- `rule_type`：要修改的规则组。
+- `value`：新增或删除的 IP/CIDR 规则值。
+
+新增黑名单后，通过代理端口访问会被拒绝：
+
+```powershell
+curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+- `-i`：同时显示 HTTP 响应头。
+- `-x http://127.0.0.1:8080`：指定 Web 代理地址。
+- 最后的 URL：客户端希望通过代理访问的目标网站。
+
+预期响应中包含：
+
+```text
+HTTP/1.1 403 Forbidden
+client_ip_blacklist
+```
+
+### 4. 查询客户端拦截日志和导出 CSV
+
+查询当前运行的客户端拦截：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?kind=blocked&event=BLOCK&search=client_ip_&limit=100"
+```
+
+查询批量验收生成的客户端拦截证据：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?profile=web&kind=blocked&event=BLOCK&search=client_ip_&limit=100"
+```
+
+导出客户端拦截 CSV：
+
+```powershell
+python tools\rule_cli.py log-export --kind blocked --event BLOCK --search client_ip_ --limit 1000 --output exports\client_ip_blocked.csv
+```
+
+关键参数：
+
+- `kind=blocked`：查询拦截日志。
+- `event=BLOCK`：只保留直接拒绝请求的记录。
+- `search=client_ip_`：同时匹配黑名单和白名单拒绝原因。
+- `profile=web`：读取批量 Web 验收证据，而不是当前运行日志。
+- `--output exports\client_ip_blocked.csv`：指定 CSV 输出文件。
+
+前端操作：打开 `http://127.0.0.1:8088/`，点击统计区的“客户端拦截”，即可进入带有相同筛选条件的日志详情页。
+
+### 5. 自动验收
+
+单独验证客户端 IP/CIDR 规则：
+
+```powershell
+python tests\stage18_client_ip_policy_smoke.py
+```
+
+验证命令行规则管理：
+
+```powershell
+python tests\stage16_rule_cli_smoke.py
+```
+
+完整回归：
+
+```powershell
+python tests\run_all_smoke.py
+```
+
+`stage18_client_ip_policy_smoke.py` 会逐步验证 CIDR 标准化、黑名单拦截、黑名单修改后恢复、白名单拒绝、白名单修改后放行、非法规则拒绝、统计值和结构化日志。
+
+## 十四、后续可继续完善的模块
+
+按照课程展示价值和实现风险，建议后续优先级如下：
+
+1. 管理端认证：为 `8088` 管理 API 和前端增加登录，避免未授权修改规则。
+2. 规则配置导入、导出和版本回滚：可在演示前保存规则快照，并一键恢复。
+3. 定时规则：支持指定星期和时间段启用规则组。
+4. SQLite 审计存储：支持大量日志分页、趋势统计和按字段聚合。
+5. HTTPS MITM 正文过滤：实现复杂且有证书信任风险，只建议写入展望。

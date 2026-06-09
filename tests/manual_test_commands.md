@@ -343,6 +343,38 @@ values
 
 替换规则组时的新规则列表。
 
+## 客户端 IP/CIDR 访问控制
+
+新增客户端网段黑名单：
+
+```powershell
+python tools\rule_cli.py add blocked_client_ips 127.0.0.0/24
+```
+
+通过代理访问，预期返回 `403` 和 `client_ip_blacklist`：
+
+```powershell
+curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+删除规则并恢复访问：
+
+```powershell
+python tools\rule_cli.py delete blocked_client_ips 127.0.0.0/24
+```
+
+查询客户端拦截日志：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search client_ip_ --limit 20
+```
+
+自动验证：
+
+```powershell
+python tests\stage18_client_ip_policy_smoke.py
+```
+
 查看统计：
 
 ```powershell

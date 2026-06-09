@@ -68,3 +68,11 @@ HTTPS MITM
 ```
 
 这些内容可以写进报告展望。当前项目已经实现 HTTP 代理转发、过滤、缓存、HTTPS CONNECT、日志统计、规则增删改查和管理前端。
+
+## 客户端访问控制函数
+
+- `client_ip_matches()`：判断客户端 IPv4/IPv6 地址是否命中单个地址或 CIDR 网段。
+- `check_client_access_policy()`：执行客户端 IP 黑名单和白名单策略。
+- `handle_client()`：在认证、限流和目标规则之前调用客户端访问控制。
+
+客户端 IP/CIDR 规则的输入校验和标准化由 `webproxy/config_rules.py` 负责。

@@ -1595,3 +1595,34 @@ python tests\run_all_smoke.py
 - `acceptance_web_evidence_smoke.py`：生成完整 Web 日志，并确认 `profile=web` 可由前端 API 查询。
 - `acceptance_rule_evidence_smoke.py`：生成规则操作记录，并验证总查询、操作分类查询和规则组分类查询。
 - `run_all_smoke.py`：验证两批证据互不覆盖，并回归整个项目。
+
+## 阶段 24：客户端 IP/CIDR 访问控制与自适应统计界面
+
+### 实现内容
+
+- 新增 `blocked_client_ips` 和 `allowed_client_ips` 两个可编辑规则组。
+- 使用 Python 标准库 `ipaddress` 校验和标准化单个 IPv4/IPv6 地址与 CIDR 网段。
+- 客户端黑名单优先；客户端白名单非空时，仅允许匹配的客户端。
+- 客户端访问控制在代理认证、限流和目标域名过滤之前执行。
+- 新增 `blocked_client` 统计项，以及 `client_ip_blacklist`、`client_ip_not_allowed` 审计原因。
+- 前端新增客户端 IP 规则提示、“客户端拦截”指标和规则变更分类选项。
+- 统计卡片由固定 12 列改为自适应网格，新增指标后仍能合理换行。
+- 新增 `stage18_client_ip_policy_smoke.py`，验证 API 热更新、CIDR 标准化、黑白名单、统计与日志。
+- CLI 和批量验收证据增加客户端 IP 规则验证。
+
+### 验证命令
+
+```powershell
+python tests\stage18_client_ip_policy_smoke.py
+python tests\stage16_rule_cli_smoke.py
+python tests\acceptance_web_evidence_smoke.py
+python tests\acceptance_rule_evidence_smoke.py
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `stage18_client_ip_policy_smoke.py`：专门验证客户端 IP/CIDR 黑白名单。
+- `stage16_rule_cli_smoke.py`：验证命令行新增、修改、删除客户端网段规则后立即生效。
+- `acceptance_web_evidence_smoke.py`：确认客户端 IP 拦截进入前端可查询的 Web 拦截证据。
+- `acceptance_rule_evidence_smoke.py`：确认客户端 IP 规则操作进入规则变更证据。

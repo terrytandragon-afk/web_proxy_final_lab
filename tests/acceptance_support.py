@@ -34,6 +34,8 @@ def build_evidence_config(proxy_port, admin_port, scope="web"):
         "mode": "blacklist",
         "blocked_domains": [],
         "allowed_domains": [],
+        "blocked_client_ips": [],
+        "allowed_client_ips": [],
         "blocked_url_keywords": [],
         "blocked_content_keywords": [],
         "blocked_methods": [],

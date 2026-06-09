@@ -101,6 +101,7 @@ def main():
         assert status == 200
         payload = json.loads(body.decode("utf-8"))
         assert any(group["type"] == "blocked_content_keywords" for group in payload["groups"])
+        assert any(group["type"] == "blocked_client_ips" for group in payload["groups"])
 
         status, body = post_json(
             "/api/rules/add",

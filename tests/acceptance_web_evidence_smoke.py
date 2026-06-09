@@ -203,6 +203,28 @@ def main():
     assert "429 Too Many Requests" in second_limited
     post_settings({"rate_limit_enabled": False})
 
+    # Client IP/CIDR policy produces a dedicated, frontend-queryable block reason.
+    status, payload = admin_request(
+        ADMIN_PORT,
+        "POST",
+        "/api/rules/add",
+        {"rule_type": "blocked_client_ips", "value": "127.0.0.0/24"},
+    )
+    assert status == 200 and payload["ok"] is True
+    assert "client_ip_blacklist" in proxy_request(
+        PROXY_PORT,
+        "GET",
+        f"http://{local_host}/client-block",
+        local_host,
+    )
+    status, payload = admin_request(
+        ADMIN_PORT,
+        "POST",
+        "/api/rules/delete",
+        {"rule_type": "blocked_client_ips", "value": "127.0.0.0/24"},
+    )
+    assert status == 200 and payload["ok"] is True
+
     # The frontend reads these exact APIs, so API assertions also prove UI-visible evidence.
     status, proxy_payload = admin_request(ADMIN_PORT, "GET", "/api/logs?kind=proxy&limit=200")
     assert status == 200
@@ -230,6 +252,12 @@ def main():
     )
     assert status == 200 and query_payload["matched"] == 1
     assert query_payload["entries"][0]["fields"]["host"] == "blocked.evidence.test"
+    status, client_query = admin_request(
+        ADMIN_PORT,
+        "GET",
+        "/api/logs/query?kind=blocked&event=BLOCK&search=client_ip_blacklist&limit=20",
+    )
+    assert status == 200 and client_query["matched"] == 1
     status, tunnel_payload = admin_request(
         ADMIN_PORT,
         "GET",
