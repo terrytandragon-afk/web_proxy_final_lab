@@ -236,8 +236,19 @@ def main():
         "/api/logs/query?kind=proxy&event=CONNECT&limit=20",
     )
     assert status == 200 and tunnel_payload["matched"] == 1
+    # The ordinary dashboard uses this fixed profile query after the batch exits.
+    status, evidence_query = admin_request(
+        ADMIN_PORT,
+        "GET",
+        "/api/logs/query?profile=web&kind=blocked&event=BLOCK&limit=20",
+    )
+    assert status == 200 and evidence_query["profile"] == "web"
+    assert evidence_query["matched"] >= 1
+    status, profiles_payload = admin_request(ADMIN_PORT, "GET", "/api/evidence/profiles")
+    web_profile = next(item for item in profiles_payload["profiles"] if item["name"] == "web")
+    assert status == 200 and web_profile["blocked_log_count"] >= 1
     status, frontend = admin_request(ADMIN_PORT, "GET", "/")
-    assert status == 200 and b"/logs.html?" in frontend
+    assert status == 200 and b"/logs.html?profile=web" in frontend
 
     print("acceptance web evidence smoke test passed")
     print(f"evidence config: {EVIDENCE_CONFIG}")

@@ -1756,6 +1756,143 @@ CSV 字段说明：
 - `message`：日志详细消息。
 - `raw`：原始日志行，便于保留完整验收证据。
 
+## 十二、在普通管理前端查看批量验收证据
+
+### 1. 为什么以前刷新普通前端看不到批量测试结果
+
+批量测试为了能够反复运行，并防止规则测试覆盖 Web 功能测试日志，会把两批证据分别保存到：
+
+```text
+tests\evidence\web
+tests\evidence\rules
+```
+
+普通管理台原来只读取 `config.example.json` 指向的当前运行日志和当前规则变更，因此刷新页面不会自动读取上述隔离目录。现在普通管理台新增了固定、只读的证据档案入口，既保留测试隔离，又能从同一个前端查看。
+
+### 2. 一步步生成并查看证据
+
+第一步，运行整个自动验收项目：
+
+```powershell
+cd E:\eve_jump\web_proxy_final_lab
+python tests\run_all_smoke.py
+```
+
+- `cd`：切换到项目根目录。
+- `python`：使用当前 Python 解释器。
+- `tests\run_all_smoke.py`：依次运行 Web/代理功能批次和规则/运行模式批次。
+
+第二步，启动普通代理服务器和管理前端：
+
+```powershell
+python src\proxy.py --config config.example.json
+```
+
+- `src\proxy.py`：启动代理后端和管理后端。
+- `--config`：指定配置文件参数。
+- `config.example.json`：当前日常运行配置；不会替换批量证据配置。
+
+第三步，浏览器打开：
+
+```text
+http://127.0.0.1:8088/
+```
+
+首页“批量验收证据”区域会显示 Web 访问日志数、Web 拦截日志数和规则变更数，并提供：
+
+- `Web 访问日志`：查看转发、缓存、HTTPS 隧道等记录。
+- `Web 拦截日志`：查看域名、URL、HTTP 方法、正文、认证和限流拦截。
+- `规则变更总览`：查看全部规则变更，并按操作类型、规则组或全文关键字筛选。
+
+首页原有统计数字、规则变更回显和右侧日志仍表示“当前运行”；“批量验收证据”表示最近一次自动验收结果，两者不会互相覆盖。
+
+### 3. 用命令行查询与前端相同的 Web 验收日志
+
+查看全部批量 Web 拦截记录：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?profile=web&kind=blocked&limit=100"
+```
+
+只查看域名黑名单拦截：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?profile=web&kind=blocked&event=BLOCK&search=domain_blacklist&limit=100"
+```
+
+只查看 HTTPS 隧道：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/logs/query?profile=web&kind=proxy&event=CONNECT&limit=100"
+```
+
+命令和参数含义：
+
+- `curl.exe`：Windows 自带的命令行 HTTP 客户端。
+- 双引号：保护 URL 中的 `&`，避免 PowerShell 把它解释成其他语法。
+- `?`：开始 URL 查询参数。
+- `&`：分隔多个查询参数。
+- `profile=web`：读取批量 Web/代理功能证据，不读取当前运行日志。
+- `kind=proxy`：查询访问日志。
+- `kind=blocked`：查询拦截日志。
+- `event=BLOCK`：只保留事件类型为 `BLOCK` 的记录。
+- `event=CONNECT`：只保留 HTTPS 隧道记录。
+- `search=domain_blacklist`：在整条日志中搜索域名黑名单拦截原因。
+- `limit=100`：最多返回 100 条匹配记录。
+
+### 4. 用命令行总查和独立查询规则变更证据
+
+查询全部规则变更：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/evidence/changes/query?profile=rules&limit=100"
+```
+
+只查询新增操作：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/evidence/changes/query?profile=rules&action=add&limit=100"
+```
+
+只查询域名黑名单的新增操作：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/evidence/changes/query?profile=rules&action=add&rule_type=blocked_domains&limit=100"
+```
+
+只查询运行模式相关变更：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/evidence/changes/query?profile=rules&action=settings&search=mode&limit=100"
+```
+
+参数含义：
+
+- `profile=rules`：读取规则管理批量测试的持久化变更证据。
+- `action=add`：只查询新增操作。
+- `action=update`：只查询修改操作。
+- `action=delete`：只查询删除操作。
+- `action=replace`：只查询替换整组操作。
+- `action=settings`：只查询白名单模式、认证、限流等运行设置变更。
+- `rule_type=blocked_domains`：只查询域名黑名单规则组。
+- `rule_type=allowed_domains`：只查询域名白名单规则组。
+- `rule_type=blocked_url_keywords`：只查询 URL 关键词规则组。
+- `rule_type=blocked_content_keywords`：只查询正文关键词规则组。
+- `rule_type=blocked_methods`：只查询禁止 HTTP 方法规则组。
+- `search=mode`：在变更记录的所有字段中搜索 `mode`。
+
+返回结果中的 `total` 表示证据文件中的全部记录数，`matched` 表示符合当前查询条件的记录数；`action_counts` 和 `rule_type_counts` 对应规则变更详情页中的两个汇总区域。
+
+### 5. 验收时建议展示顺序
+
+1. 运行 `python tests\run_all_smoke.py`，展示两批测试全部通过。
+2. 启动 `python src\proxy.py --config config.example.json`。
+3. 打开普通管理台，展示“批量验收证据”数量。
+4. 点击 `Web 拦截日志`，分别筛选 `BLOCK`、`FILTER`、`AUTH_REQUIRED`、`RATE_LIMIT`。
+5. 点击 `Web 访问日志`，筛选 `ALLOW`、`CACHE_HIT`、`CONNECT`。
+6. 点击 `规则变更总览`，先展示全部记录，再按新增、修改、删除、替换整组、运行设置筛选。
+7. 使用本节 curl 命令展示前端与后端命令行查询结果一致。
+
 前端导出：
 
 ```text

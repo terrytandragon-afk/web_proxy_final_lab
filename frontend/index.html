@@ -185,6 +185,33 @@
       margin-bottom: 16px;
     }
 
+    .evidence-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 12px 14px;
+    }
+
+    .evidence-links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .evidence-link {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 7px 12px;
+      text-decoration: none;
+    }
+
     .metric {
       display: block;
       min-height: 76px;
@@ -498,6 +525,17 @@
   <main>
     <div class="notice" id="notice">规则查询、添加、删除、修改、替换会直接调用后端 API，并保存到当前配置文件。</div>
     <div class="metrics" id="metrics"></div>
+    <div class="evidence-bar">
+      <div>
+        <h2>批量验收证据</h2>
+        <div class="subtitle" id="evidenceStatus">正在检查批量测试证据</div>
+      </div>
+      <div class="evidence-links">
+        <a class="evidence-link" href="/logs.html?profile=web&kind=proxy&title=Web验收访问">Web 访问日志</a>
+        <a class="evidence-link" href="/logs.html?profile=web&kind=blocked&title=Web验收拦截">Web 拦截日志</a>
+        <a class="evidence-link" href="/changes.html?profile=rules">规则变更总览</a>
+      </div>
+    </div>
 
     <div class="layout">
       <div>
@@ -856,8 +894,18 @@
       logs.scrollTop = logs.scrollHeight;
     }
 
+    async function loadEvidenceProfiles() {
+      // Batch evidence remains isolated from current runtime data but is visible here.
+      const payload = await getJson("/api/evidence/profiles");
+      const profiles = payload.profiles || [];
+      const web = profiles.find(item => item.name === "web") || {};
+      const rules = profiles.find(item => item.name === "rules") || {};
+      document.getElementById("evidenceStatus").textContent =
+        `Web：访问 ${web.proxy_log_count || 0}，拦截 ${web.blocked_log_count || 0}；规则变更：${rules.change_count || 0}`;
+    }
+
     async function refreshAll() {
-      await Promise.all([loadConfig(), loadRules(), loadStats(), loadLogs(), loadChanges()]);
+      await Promise.all([loadConfig(), loadRules(), loadStats(), loadLogs(), loadChanges(), loadEvidenceProfiles()]);
       renderChangeLog();
     }
 

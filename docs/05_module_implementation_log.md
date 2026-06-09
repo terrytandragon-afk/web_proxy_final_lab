@@ -1567,3 +1567,31 @@ python tests\run_all_smoke.py
 - `stage8_admin_smoke.py`：验证 CSV API 的文件头、字段名和筛选结果。
 - `stage16_rule_cli_smoke.py`：验证命令行导出 CSV 并读取其中的域名拦截证据。
 - `run_all_smoke.py`：验证新增导出功能没有影响代理、规则、运行模式与前端功能。
+
+## 阶段 23：普通管理台查看隔离的批量验收证据
+
+### 实现内容
+
+- 新增 `src/webproxy/evidence.py`，集中管理固定的 `web`、`rules` 两个只读证据档案。
+- 普通管理端新增 `/api/evidence/profiles`，显示两类证据是否存在以及访问、拦截、错误、规则变更数量。
+- 日志查询与 CSV 导出支持 `profile=web`，普通 `8088` 管理端可读取批量 Web 测试日志。
+- 新增 `/api/evidence/changes/query`，支持规则变更总查询，以及按 `action`、`rule_type`、全文关键字独立查询。
+- 新增 `frontend/changes.html` 规则变更详情页，显示按操作和规则组汇总结果。
+- 管理台首页新增“批量验收证据”入口，明确区分当前运行数据与批量验收数据。
+- 固定证据档案由后端映射，前端不能传入任意文件路径。
+
+### 验证命令
+
+```powershell
+python tests\stage8_admin_smoke.py
+python tests\acceptance_web_evidence_smoke.py
+python tests\acceptance_rule_evidence_smoke.py
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `stage8_admin_smoke.py`：验证首页证据入口、日志详情页、规则变更详情页和证据档案 API。
+- `acceptance_web_evidence_smoke.py`：生成完整 Web 日志，并确认 `profile=web` 可由前端 API 查询。
+- `acceptance_rule_evidence_smoke.py`：生成规则操作记录，并验证总查询、操作分类查询和规则组分类查询。
+- `run_all_smoke.py`：验证两批证据互不覆盖，并回归整个项目。

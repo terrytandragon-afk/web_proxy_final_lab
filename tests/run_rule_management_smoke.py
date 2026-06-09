@@ -17,7 +17,7 @@ def main():
     if result == 0:
         print("Rule evidence: tests/evidence/rules/changes.jsonl", flush=True)
         print(
-            "Evidence dashboard: python src\\proxy.py --config tests\\evidence\\rules\\acceptance_config.json",
+            "Normal dashboard: open http://127.0.0.1:8088/ and use Rule Change Overview",
             flush=True,
         )
     return result

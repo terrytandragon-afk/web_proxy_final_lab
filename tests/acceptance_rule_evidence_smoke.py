@@ -169,8 +169,28 @@ def main():
     assert len(reloaded_changes["changes"]) == len(changes_payload["changes"])
     status, blocked_logs = admin_request(ADMIN_PORT, "GET", "/api/logs?kind=blocked&limit=200")
     assert status == 200 and any("BLOCK" in line for line in blocked_logs["logs"])
+    # The evidence page supports both a total view and independent operation/group queries.
+    status, all_change_evidence = admin_request(
+        ADMIN_PORT,
+        "GET",
+        "/api/evidence/changes/query?profile=rules&limit=100",
+    )
+    assert status == 200
+    assert all_change_evidence["total"] == len(changes_payload["changes"])
+    assert {"add", "update", "delete", "replace", "settings"} <= set(
+        all_change_evidence["action_counts"]
+    )
+    status, domain_add_evidence = admin_request(
+        ADMIN_PORT,
+        "GET",
+        "/api/evidence/changes/query?profile=rules&action=add&rule_type=blocked_domains&limit=100",
+    )
+    assert status == 200 and domain_add_evidence["matched"] == 1
+    assert domain_add_evidence["entries"][0]["value"] == "cli-evidence.test"
     status, frontend = admin_request(ADMIN_PORT, "GET", "/")
-    assert status == 200 and b"/api/changes" in frontend
+    assert status == 200 and b"/changes.html?profile=rules" in frontend
+    status, changes_frontend = admin_request(ADMIN_PORT, "GET", "/changes.html")
+    assert status == 200 and b"/api/evidence/changes/query" in changes_frontend
 
     print("acceptance rule evidence smoke test passed")
     print(f"persistent change entries verified: {len(changes_payload['changes'])}")

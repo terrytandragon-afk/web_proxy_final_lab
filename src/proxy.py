@@ -30,6 +30,11 @@ try:
         rule_identity,
         validate_rule_type,
     )
+    from .webproxy.evidence import (
+        list_evidence_profiles,
+        load_evidence_config,
+        query_change_entries,
+    )
 except ImportError:
     # Running `python src/proxy.py` adds `src` rather than the project root to sys.path.
     from webproxy.audit import (
@@ -51,11 +56,17 @@ except ImportError:
         rule_identity,
         validate_rule_type,
     )
+    from webproxy.evidence import (
+        list_evidence_profiles,
+        load_evidence_config,
+        query_change_entries,
+    )
 
 BUFFER_SIZE = 8192
 DEFAULT_TIMEOUT = 10
 FRONTEND_INDEX = PROJECT_ROOT / "frontend" / "index.html"
 LOG_DETAILS_INDEX = PROJECT_ROOT / "frontend" / "logs.html"
+CHANGE_DETAILS_INDEX = PROJECT_ROOT / "frontend" / "changes.html"
 
 
 class RuntimeState:
@@ -1129,6 +1140,9 @@ class AdminHandler(BaseHTTPRequestHandler):
         if parsed.path == "/logs.html":
             self.send_frontend(LOG_DETAILS_INDEX)
             return
+        if parsed.path == "/changes.html":
+            self.send_frontend(CHANGE_DETAILS_INDEX)
+            return
         if parsed.path == "/api/config":
             self.send_json({"config": self.state.get_config()})
             return
@@ -1146,34 +1160,40 @@ class AdminHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/logs":
             query = parse_qs(parsed.query)
             kind = query.get("kind", ["proxy"])[0]
+            profile = query.get("profile", [""])[0]
             limit = parse_bounded_query_int(query, "limit", 100, 500)
-            logs = read_log_tail(self.state.get_config(), kind, limit)
-            self.send_json({"kind": kind, "logs": logs})
+            config = load_evidence_config(profile) if profile else self.state.get_config()
+            logs = read_log_tail(config, kind, limit)
+            self.send_json({"kind": kind, "profile": profile, "logs": logs})
             return
         if parsed.path == "/api/logs/query":
             query = parse_qs(parsed.query)
             kind = query.get("kind", ["proxy"])[0]
+            profile = query.get("profile", [""])[0]
             events = query.get("event", [""])[0].split(",")
             search = query.get("search", [""])[0]
             limit = parse_bounded_query_int(query, "limit", 200, 1000)
-            self.send_json(
-                query_log_entries(
-                    self.state.get_config(),
-                    kind=kind,
-                    events=events,
-                    search=search,
-                    limit=limit,
-                )
+            config = load_evidence_config(profile) if profile else self.state.get_config()
+            result = query_log_entries(
+                config,
+                kind=kind,
+                events=events,
+                search=search,
+                limit=limit,
             )
+            result["profile"] = profile
+            self.send_json(result)
             return
         if parsed.path == "/api/logs/export.csv":
             query = parse_qs(parsed.query)
             kind = query.get("kind", ["proxy"])[0]
+            profile = query.get("profile", [""])[0]
             events = query.get("event", [""])[0].split(",")
             search = query.get("search", [""])[0]
             limit = parse_bounded_query_int(query, "limit", 1000, 5000)
+            config = load_evidence_config(profile) if profile else self.state.get_config()
             result = query_log_entries(
-                self.state.get_config(),
+                config,
                 kind=kind,
                 events=events,
                 search=search,
@@ -1183,6 +1203,26 @@ class AdminHandler(BaseHTTPRequestHandler):
                 build_log_csv(result),
                 "text/csv; charset=utf-8",
                 filename=f"{result['kind']}_logs.csv",
+            )
+            return
+        if parsed.path == "/api/evidence/profiles":
+            self.send_json({"profiles": list_evidence_profiles()})
+            return
+        if parsed.path == "/api/evidence/changes/query":
+            query = parse_qs(parsed.query)
+            profile = query.get("profile", ["rules"])[0]
+            action = query.get("action", [""])[0]
+            rule_type = query.get("rule_type", [""])[0]
+            search = query.get("search", [""])[0]
+            limit = parse_bounded_query_int(query, "limit", 200, 1000)
+            self.send_json(
+                query_change_entries(
+                    profile,
+                    action=action,
+                    rule_type=rule_type,
+                    search=search,
+                    limit=limit,
+                )
             )
             return
         if parsed.path == "/api/health":

@@ -23,6 +23,10 @@ def main():
             "Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log",
             flush=True,
         )
+        print(
+            "Normal dashboard: open http://127.0.0.1:8088/ and use Batch Acceptance Evidence",
+            flush=True,
+        )
     return result
 
 

@@ -157,6 +157,14 @@ python tests\run_all_smoke.py
 docs/08_backend_cli_rule_management.md
 ```
 
+运行批量测试后，仍然只需启动普通管理端：
+
+```powershell
+python src\proxy.py --config config.example.json
+```
+
+打开 `http://127.0.0.1:8088/`，在“批量验收证据”中可直接查看 Web 访问日志、Web 拦截日志和规则变更总览。证据读取是只读操作，不会改变当前运行规则。
+
 ## 重要边界
 
 普通代理可以过滤 **HTTP 明文网页内容**。  

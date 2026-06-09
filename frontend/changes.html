@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>规则变更证据 - Web Proxy Admin</title>
+  <style>
+    :root { --bg:#f5f7fa; --panel:#fff; --line:#d8dee8; --text:#1f2933; --muted:#667085; --accent:#0f766e; --danger:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px "Segoe UI","Microsoft YaHei",Arial,sans-serif; letter-spacing:0; }
+    header { border-bottom:1px solid var(--line); background:var(--panel); }
+    .topbar, main { max-width:1360px; margin:0 auto; padding-left:24px; padding-right:24px; }
+    .topbar { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    h1 { margin:0; font-size:20px; }
+    .subtitle { margin-top:4px; color:var(--muted); font-size:13px; }
+    a.back, button { min-height:34px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); padding:7px 12px; cursor:pointer; text-decoration:none; white-space:nowrap; }
+    button.primary { border-color:var(--accent); background:var(--accent); color:#fff; }
+    main { padding-top:20px; padding-bottom:32px; }
+    .querybar { display:grid; grid-template-columns:160px 220px minmax(220px,1fr) 110px auto; gap:10px; align-items:end; padding-bottom:18px; }
+    label { display:grid; gap:5px; color:var(--muted); font-size:12px; }
+    input, select { width:100%; min-height:36px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); padding:0 10px; }
+    .summary { display:flex; gap:24px; flex-wrap:wrap; border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:var(--panel); padding:12px 14px; color:var(--muted); }
+    .summary strong { color:var(--text); }
+    .counts { display:grid; grid-template-columns:repeat(2,minmax(240px,1fr)); gap:12px; margin:14px 0; }
+    .count-box { border:1px solid var(--line); background:var(--panel); padding:12px; }
+    .count-box strong { display:block; margin-bottom:7px; }
+    .count-box span { color:var(--muted); line-height:1.8; overflow-wrap:anywhere; }
+    .table-wrap { overflow:auto; border-bottom:1px solid var(--line); background:var(--panel); }
+    table { width:100%; border-collapse:collapse; table-layout:fixed; min-width:980px; }
+    th, td { border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; overflow-wrap:anywhere; }
+    th { background:#f8fafc; color:var(--muted); font-size:12px; }
+    th:nth-child(1) { width:170px; } th:nth-child(2) { width:100px; } th:nth-child(3) { width:190px; } th:nth-child(4) { width:110px; }
+    td.details { font:12px/1.5 Consolas,"Cascadia Mono",monospace; }
+    td.details pre { margin:0; white-space:pre-wrap; }
+    .empty { padding:36px 12px; color:var(--muted); text-align:center; }
+    .error { color:var(--danger); }
+    @media (max-width:860px) { .topbar { align-items:flex-start; padding-top:14px; padding-bottom:14px; } .querybar,.counts { grid-template-columns:1fr 1fr; } .querybar label:nth-child(3) { grid-column:1/-1; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div><h1>规则变更验收证据</h1><div class="subtitle">查看批量测试生成的全部变更，并按操作或规则组独立查询</div></div>
+      <a class="back" href="/">返回管理台</a>
+    </div>
+  </header>
+  <main>
+    <form class="querybar" id="queryForm">
+      <label>操作类型<select id="actionInput"><option value="">全部操作</option><option value="add">新增</option><option value="update">修改</option><option value="delete">删除</option><option value="replace">替换整组</option><option value="settings">运行设置</option></select></label>
+      <label>规则组<select id="ruleTypeInput"><option value="">全部规则组</option><option value="blocked_domains">域名黑名单</option><option value="allowed_domains">域名白名单</option><option value="blocked_url_keywords">URL 关键词</option><option value="blocked_content_keywords">正文关键词</option><option value="blocked_methods">禁止 HTTP 方法</option><option value="settings">运行设置</option></select></label>
+      <label>全文查询<input id="searchInput" placeholder="例如 whitelist、cli-evidence"></label>
+      <label>最大结果数<input id="limitInput" type="number" min="1" max="1000" value="200"></label>
+      <button class="primary" type="submit">查询</button>
+    </form>
+    <div class="summary" id="summary"><span>正在读取规则变更证据</span></div>
+    <div class="counts">
+      <div class="count-box"><strong>按操作汇总</strong><span id="actionCounts">-</span></div>
+      <div class="count-box"><strong>按规则组汇总</strong><span id="ruleCounts">-</span></div>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>时间</th><th>操作</th><th>规则组</th><th>结果</th><th>变更详情</th></tr></thead><tbody id="results"></tbody></table>
+      <div class="empty" id="empty" hidden>没有符合当前条件的规则变更记录</div>
+    </div>
+  </main>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const actionInput = document.getElementById("actionInput");
+    const ruleTypeInput = document.getElementById("ruleTypeInput");
+    const searchInput = document.getElementById("searchInput");
+    const limitInput = document.getElementById("limitInput");
+
+    function escapeHtml(value) {
+      return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+    }
+    function initializeQuery() {
+      actionInput.value = params.get("action") || "";
+      ruleTypeInput.value = params.get("rule_type") || "";
+      searchInput.value = params.get("search") || "";
+      limitInput.value = params.get("limit") || "200";
+    }
+    function buildQuery() {
+      // The rules profile is fixed and read-only; filters only affect displayed evidence.
+      return new URLSearchParams({ profile:"rules", action:actionInput.value, rule_type:ruleTypeInput.value, search:searchInput.value.trim(), limit:limitInput.value || "200" });
+    }
+    function renderCounts(id, counts) {
+      const text = Object.entries(counts || {}).sort((a,b) => b[1]-a[1]).map(([name,count]) => `${name}: ${count}`).join(" | ");
+      document.getElementById(id).textContent = text || "暂无记录";
+    }
+    function changeDetails(entry) {
+      const detail = { ...entry };
+      ["time","action","rule_type","changed","saved"].forEach(key => delete detail[key]);
+      return JSON.stringify(detail, null, 2);
+    }
+    function render(payload) {
+      document.getElementById("summary").innerHTML = `<span>数据来源：<strong>${escapeHtml(payload.profile)}</strong></span><span>全部记录：<strong>${escapeHtml(payload.total)}</strong></span><span>匹配记录：<strong>${escapeHtml(payload.matched)}</strong></span><span>操作条件：<strong>${escapeHtml(payload.action || "全部")}</strong></span><span>规则组条件：<strong>${escapeHtml(payload.rule_type || "全部")}</strong></span>`;
+      renderCounts("actionCounts", payload.action_counts);
+      renderCounts("ruleCounts", payload.rule_type_counts);
+      const rows = payload.entries || [];
+      document.getElementById("empty").hidden = rows.length > 0;
+      document.getElementById("results").innerHTML = rows.map(entry => `<tr><td>${escapeHtml(entry.time)}</td><td>${escapeHtml(entry.action)}</td><td>${escapeHtml(entry.rule_type || "settings")}</td><td>changed=${escapeHtml(entry.changed)}<br>saved=${escapeHtml(entry.saved)}</td><td class="details"><pre>${escapeHtml(changeDetails(entry))}</pre></td></tr>`).join("");
+    }
+    async function runQuery(updateUrl=false) {
+      const query = buildQuery();
+      if (updateUrl) history.replaceState(null, "", `/changes.html?${query.toString()}`);
+      const response = await fetch(`/api/evidence/changes/query?${query.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+      render(payload);
+    }
+    function showError(error) { document.getElementById("summary").innerHTML = `<span class="error">查询失败：${escapeHtml(error.message)}</span>`; }
+    document.getElementById("queryForm").addEventListener("submit", event => { event.preventDefault(); runQuery(true).catch(showError); });
+    initializeQuery();
+    runQuery().catch(showError);
+  </script>
+</body>
+</html>

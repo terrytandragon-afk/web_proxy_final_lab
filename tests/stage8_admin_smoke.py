@@ -232,12 +232,24 @@ def main():
         assert "清空缓存".encode("utf-8") in body
         assert "重置统计".encode("utf-8") in body
         assert "清空日志".encode("utf-8") in body
+        assert b"/api/evidence/profiles" in body
+        assert b"/logs.html?profile=web" in body
+        assert b"/changes.html?profile=rules" in body
 
         status, body = get("/logs.html")
         assert status == 200
         assert "日志查询".encode("utf-8") in body
         assert b"/api/logs/query" in body
         assert b"/api/logs/export.csv" in body
+
+        status, body = get("/changes.html")
+        assert status == 200
+        assert b"/api/evidence/changes/query" in body
+
+        status, body = get("/api/evidence/profiles")
+        assert status == 200
+        profiles = json.loads(body.decode("utf-8"))["profiles"]
+        assert {profile["name"] for profile in profiles} == {"web", "rules"}
 
         status, body = post("/api/cache/clear")
         assert status == 200

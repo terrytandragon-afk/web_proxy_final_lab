@@ -295,6 +295,8 @@
         search: searchInput.value.trim(),
         limit: limitInput.value || "200"
       });
+      // Preserve the fixed evidence profile while filters change on this page.
+      if (params.get("profile")) query.set("profile", params.get("profile"));
       return query;
     }
 
@@ -309,6 +311,7 @@
 
     function render(payload) {
       document.getElementById("summary").innerHTML = `
+        <span>数据来源：<strong>${escapeHtml(payload.profile || "当前运行")}</strong></span>
         <span>日志类型：<strong>${escapeHtml(payload.kind)}</strong></span>
         <span>原始记录：<strong>${escapeHtml(payload.total)}</strong></span>
         <span>匹配记录：<strong>${escapeHtml(payload.matched)}</strong></span>
