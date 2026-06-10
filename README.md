@@ -55,10 +55,15 @@ web_proxy_final_lab/
       config_rules.py
   tests/
     manual_test_commands.md
+    manual_acceptance_workflow_smoke.py
+    manual_demo_server.py
+    manual_connect_tunnel.py
     webroot/
       index.html
       forbidden.html
+      content-test.html
       classroom.html
+      game/index.html
   docker/
     README.md
 ```
@@ -95,6 +100,14 @@ http://127.0.0.1:8080
 ```text
 http://127.0.0.1:8088/
 ```
+
+手动验收建议在另一个 PowerShell 启动确定性测试目标：
+
+```powershell
+python tests\manual_demo_server.py
+```
+
+访问本机测试站时，代理命令应包含 `--noproxy no-host-bypass.invalid`，否则 Windows `curl.exe` 可能根据 `NO_PROXY` 绕过代理，使 URL/正文过滤、缓存和限流看起来失效。完整逐模块命令见 `docs/07_manual_module_verification.md`。
 
 前端支持规则变更回显：添加、修改、删除、替换规则组后，页面会显示操作类型、规则组、旧值/新值以及是否保存成功。
 

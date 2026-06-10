@@ -1,4 +1,4 @@
-# 07 逐模块手工验证指南
+﻿# 07 逐模块手工验证指南
 
 本文件用于你自己熟悉项目，也用于现场逐个功能模块验收。
 
@@ -16,28 +16,38 @@
 打开第一个 PowerShell：
 
 ```powershell
-cd E:\eve_jump\web_proxy_final_lab\tests\webroot
-python -m http.server 9000
+cd E:\eve_jump\web_proxy_final_lab
+python tests\manual_demo_server.py
 ```
 
 命令解释：
 
 ```text
-cd E:\eve_jump\web_proxy_final_lab\tests\webroot
+cd E:\eve_jump\web_proxy_final_lab
 ```
 
-进入测试网页目录。
+进入项目根目录。
 
 ```text
-python -m http.server 9000
+python tests\manual_demo_server.py
 ```
 
-使用 Python 标准库启动一个简单 HTTP 服务器，端口是 `9000`。
+启动专用手动验收目标：HTTP 测试站监听 `9000`，CONNECT 回显目标监听 `9001`。
 
 作用：
 
 ```text
 模拟真实 Web 服务器，供代理转发、过滤、缓存测试使用。
+```
+
+专用测试站提供互不干扰的地址：
+
+```text
+/content-test.html  正文包含 forbidden，但 URL 不包含 forbidden
+/game/index.html    文件真实存在，用于证明 URL 规则返回 403，而不是上游 404
+/cache.txt          返回 X-Upstream-Hit，方便证明第二次请求来自代理缓存
+/rate-limit.txt     用于限流演示
+127.0.0.1:9001      TCP 回显目标，用于证明 CONNECT 建立后确实转发数据
 ```
 
 ### 2. 启动代理和管理前端
@@ -76,7 +86,37 @@ python src\proxy.py
 管理前端：http://127.0.0.1:8088/
 ```
 
-### 3. 打开管理前端
+### 3. PowerShell 本机代理验收的重要参数
+
+所有访问 `127.0.0.1:9000` 的代理测试都必须包含：
+
+```text
+--noproxy no-host-bypass.invalid
+```
+
+Windows 的 `curl.exe` 经常从 `NO_PROXY` 环境变量读取 `127.0.0.1`，导致本机请求绕过 `-x` 指定的代理。使用一个不会匹配目标的 `--noproxy` 值，可以强制请求经过 `8080` 代理。
+
+判断是否真的经过代理：
+
+```text
+代理终端必须打印本次请求，管理前端“当前运行”的总请求必须增加。
+访问 /game/index.html 时，如果看到上游 404，说明请求绕过了代理或 URL 规则尚未添加。
+```
+
+验收前准备互不冲突的规则：
+
+```powershell
+python tools\rule_cli.py add blocked_url_keywords game
+python tools\rule_cli.py add blocked_content_keywords forbidden
+```
+
+使用前端或 `rule_cli.py` 修改规则会立即生效。直接编辑 `config.example.json` 后，需要重启代理或执行：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8088/api/reload
+```
+
+### 4. 打开管理前端
 
 浏览器打开：
 
@@ -99,7 +139,7 @@ HTTPS 隧道
 访问日志
 ```
 
-### 4. 演示前清空状态
+### 5. 演示前清空状态
 
 可以在管理前端点击：
 
@@ -164,7 +204,7 @@ handle_client()
 ### 验证命令
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 命令解释：
@@ -191,7 +231,7 @@ http://127.0.0.1:9000/
 
 ```text
 HTTP/1.0 200 OK
-Web Proxy Test Page
+Manual proxy demo home
 ```
 
 前端观察：
@@ -215,7 +255,7 @@ check_access_policy()
 ### 验证命令
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 命令解释：
@@ -253,16 +293,16 @@ build_keyword_block_response()
 ### 验证命令
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/content-test.html
 ```
 
 命令解释：
 
 ```text
-forbidden.html
+content-test.html
 ```
 
-测试页面，正文包含配置中的敏感词 `forbidden`。
+测试页面的正文包含敏感词 `forbidden`，但 URL 本身不包含该词，因此可以明确证明命中的是正文过滤，不是 URL 过滤。
 
 预期结果：
 
@@ -291,7 +331,7 @@ check_access_policy()
 ### 验证命令
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 ```
 
 命令解释：
@@ -300,7 +340,7 @@ curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 game
 ```
 
-默认配置文件中的 URL 关键字。
+验收前通过 `rule_cli.py` 加入的 URL 关键字。测试站中该文件真实存在，因此 `403` 能证明代理执行了 URL 拦截。
 
 预期结果：
 
@@ -328,7 +368,7 @@ check_access_policy()
 ### 验证命令
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
 ```
 
 命令解释：
@@ -366,18 +406,26 @@ build_cache_key()
 
 ### 验证命令
 
+先启用缓存并清空已有缓存：
+
+```powershell
+python tools\rule_cli.py set cache_enabled true
+curl.exe -X POST http://127.0.0.1:8088/api/cache/clear
+```
+
 连续执行两次：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/cache.txt
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/cache.txt
 ```
 
 预期结果：
 
 ```text
-第一次：访问目标服务器，缓存未命中。
-第二次：代理直接返回缓存，日志出现 CACHE_HIT。
+两次响应都显示 X-Upstream-Hit: 1 和 upstream-hit=1。
+第一次日志出现 CACHE_MISS 和 ALLOW。
+第二次代理直接返回缓存，日志出现 CACHE_HIT。
 ```
 
 前端观察：
@@ -424,10 +472,18 @@ https://example.com/
 HTTPS 隧道建立成功，返回目标网站响应头。
 ```
 
-### 外网不可用时验证
+### 本地确定性验证：证明隧道建立后转发数据
 
 ```powershell
-python tests\stage9_connect_smoke.py
+python tests\manual_connect_tunnel.py
+```
+
+预期：
+
+```text
+HTTP/1.1 200 Connection Established
+echo:hello-through-manual-tunnel
+manual CONNECT tunnel data forwarding passed
 ```
 
 前端观察：
@@ -457,7 +513,7 @@ python src\proxy.py --config configs\whitelist.example.json
 ### 验证允许域名
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期：
@@ -469,7 +525,7 @@ HTTP/1.0 200 OK
 ### 验证非白名单域名
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://not-allowed.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://not-allowed.test/
 ```
 
 预期：
@@ -501,7 +557,7 @@ python src\proxy.py --config configs\auth.example.json
 ### 未认证访问
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期：
@@ -513,7 +569,7 @@ HTTP/1.1 407 Proxy Authentication Required
 ### 正确认证访问
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
 ```
 
 命令解释：
@@ -547,19 +603,24 @@ RuntimeState.check_rate_limit()
 configs/rate_limit.example.json
 ```
 
-### 启动限流配置
+### 运行中启用限流
 
-停止默认代理后，重新启动：
+默认配置中 `rate_limit_enabled=false`。只修改请求上限不会启用限流，必须同时打开限流并清空旧计数：
 
 ```powershell
-python src\proxy.py --config configs\rate_limit.example.json
+python tools\rule_cli.py set rate_limit_enabled true
+python tools\rule_cli.py set rate_limit_per_minute 1
+python tools\rule_cli.py set rate_limit_window_seconds 60
+python tools\rule_cli.py rate-reset
 ```
+
+`rate_limit_per_minute` 是为兼容旧配置保留的字段名，实际含义是“一个 `rate_limit_window_seconds` 时间窗口内允许的请求数”。
 
 ### 连续请求
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/rate-limit.txt
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/rate-limit.txt
 ```
 
 预期：
@@ -574,6 +635,13 @@ curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```text
 限流拦截 +1
 访问日志出现 RATE_LIMIT
+```
+
+演示后关闭限流：
+
+```powershell
+python tools\rule_cli.py set rate_limit_enabled false
+python tools\rule_cli.py rate-reset
 ```
 
 ## 十二、模块 11：管理 API 与前端
@@ -682,7 +750,7 @@ http://127.0.0.1:8088/
 验证新增生效：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 预期：
@@ -725,7 +793,7 @@ blocked by keyword filter: classroom
 再次验证：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 预期：
@@ -942,7 +1010,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/rules/add -H "Content-Type: applicati
 验证：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://demo-block.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://demo-block.test/
 ```
 
 预期：
@@ -969,7 +1037,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/rules/add -H "Content-Type: applicati
 验证：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/private/page.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/private/page.html
 ```
 
 预期：
@@ -996,7 +1064,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/rules/add -H "Content-Type: applicati
 验证：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 -X PATCH http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 -X PATCH http://127.0.0.1:9000/
 ```
 
 预期：
@@ -1029,7 +1097,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/settings/update -H "Content-Type: app
 验证白名单内域名：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期：
@@ -1047,7 +1115,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/rules/delete -H "Content-Type: applic
 再次访问：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期：

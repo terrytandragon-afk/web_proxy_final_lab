@@ -1,4 +1,4 @@
-# 09 PowerShell/CMD 规则修改兼容与后端回显
+﻿# 09 PowerShell/CMD 规则修改兼容与后端回显
 
 ## 一、实现了什么功能
 

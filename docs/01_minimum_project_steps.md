@@ -1,4 +1,4 @@
-# 01 最低要求实现步骤
+﻿# 01 最低要求实现步骤
 
 本文件只拆解最低要求，不直接给完整代码。你可以按阶段逐步实现，每完成一阶段就用命令验证。
 
@@ -28,7 +28,7 @@ python src\proxy.py --host 127.0.0.1 --port 8080 --config config.example.json
 测试命令：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期现象：
@@ -73,7 +73,7 @@ path = /index.html
 测试命令：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/index.html
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/index.html
 ```
 
 预期现象：
@@ -114,7 +114,7 @@ Accept-Encoding: identity
 测试命令：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/index.html
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/index.html
 ```
 
 预期现象：
@@ -138,7 +138,7 @@ curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/index.html
 测试命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期现象：
@@ -172,7 +172,7 @@ curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 测试命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 预期现象：
@@ -223,7 +223,7 @@ application/json
 测试命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```
 
 预期现象：
@@ -298,17 +298,17 @@ python src\proxy.py --host 127.0.0.1 --port 8080 --config config.example.json
 验证普通转发：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 验证指定域名拦截：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 验证指定关键字过滤：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```

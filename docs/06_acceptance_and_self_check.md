@@ -1,4 +1,4 @@
-# 06 验收与自测流程
+﻿# 06 验收与自测流程
 
 本文件专门回答两个问题：
 
@@ -101,28 +101,35 @@ FAILED: stageX_xxx.py
 打开第一个 PowerShell：
 
 ```powershell
-cd E:\eve_jump\web_proxy_final_lab\tests\webroot
-python -m http.server 9000
+cd E:\eve_jump\web_proxy_final_lab
+python tests\manual_demo_server.py
 ```
 
 命令含义：
 
 ```text
-cd E:\eve_jump\web_proxy_final_lab\tests\webroot
+cd E:\eve_jump\web_proxy_final_lab
 ```
 
-进入测试网页目录。
+进入项目根目录。
 
 ```text
-python -m http.server 9000
+python tests\manual_demo_server.py
 ```
 
-启动 Python 自带 HTTP 服务器，端口是 `9000`。
+启动专用手动验收目标：HTTP 测试站端口为 `9000`，CONNECT 回显目标端口为 `9001`。
 
 展示说明：
 
 ```text
 这个本地网站模拟真实 Web 服务器，用来测试代理转发和网页过滤。
+```
+
+PowerShell 访问本机测试站的代理命令必须包含 `--noproxy no-host-bypass.invalid`，防止 Windows `curl.exe` 根据 `NO_PROXY` 绕过代理。验收前准备规则：
+
+```powershell
+python tools\rule_cli.py add blocked_url_keywords game
+python tools\rule_cli.py add blocked_content_keywords forbidden
 ```
 
 ### 步骤 2：启动代理服务和管理前端
@@ -188,7 +195,7 @@ http://127.0.0.1:8088/
 打开第三个 PowerShell：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 命令含义：
@@ -226,7 +233,7 @@ HTTP/1.0 200 OK
 ### 步骤 5：验证域名拦截
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 预期结果：
@@ -245,7 +252,7 @@ blocked.test 在配置文件黑名单中，因此代理直接拦截，不访问�
 ### 步骤 6：验证网页关键字过滤
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/content-test.html
 ```
 
 预期结果：
@@ -257,7 +264,7 @@ curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 展示说明：
 
 ```text
-HTTP 明文网页正文包含 forbidden，代理检测到关键字后返回过滤提示页。
+HTTP 明文网页正文包含 `forbidden`，但 URL 不包含该词，因此代理返回过滤提示页可以明确证明正文过滤生效。
 ```
 
 ### 步骤 7：验证 URL 关键字和请求方法过滤
@@ -265,13 +272,13 @@ HTTP 明文网页正文包含 forbidden，代理检测到关键字后返回过�
 URL 关键字：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 ```
 
 请求方法：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
 ```
 
 命令含义：
@@ -290,11 +297,18 @@ HTTP/1.1 403 Forbidden
 
 ### 步骤 8：验证缓存
 
+先启用并清空缓存：
+
+```powershell
+python tools\rule_cli.py set cache_enabled true
+curl.exe -X POST http://127.0.0.1:8088/api/cache/clear
+```
+
 连续访问同一 URL 两次：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/cache.txt
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/cache.txt
 ```
 
 展示重点：
@@ -302,6 +316,7 @@ curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```text
 第一次请求缓存未命中。
 第二次请求缓存命中。
+两次响应均显示 `X-Upstream-Hit: 1` 和 `upstream-hit=1`。
 管理前端中的“缓存命中”“缓存条目”会变化。
 ```
 
@@ -322,7 +337,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/rules/add -H "Content-Type: applicati
 访问包含该关键字的测试页面：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 预期结果：
@@ -369,7 +384,7 @@ python tools\rule_cli.py replace blocked_url_keywords private exam
 再次访问：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 预期结果：
@@ -407,10 +422,44 @@ curl -I -x http://127.0.0.1:8080 https://example.com/
 HTTPS 使用 CONNECT 隧道。代理能控制目标域名，但不能读取 HTTPS 正文。
 ```
 
-如果外网不可用，用自动测试：
+本地确定性验收，证明 CONNECT 建立后确实转发数据：
 
 ```powershell
-python tests\stage9_connect_smoke.py
+python tests\manual_connect_tunnel.py
+```
+
+预期包含：
+
+```text
+echo:hello-through-manual-tunnel
+manual CONNECT tunnel data forwarding passed
+```
+
+### 步骤 10.1：验证访问频率限制
+
+启用限流、设置窗口内仅允许一次请求并清空计数：
+
+```powershell
+python tools\rule_cli.py set rate_limit_enabled true
+python tools\rule_cli.py set rate_limit_per_minute 1
+python tools\rule_cli.py set rate_limit_window_seconds 60
+python tools\rule_cli.py rate-reset
+```
+
+连续请求两次：
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/rate-limit.txt
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/rate-limit.txt
+```
+
+第一次返回 `200`，第二次返回 `429 Too Many Requests`。默认配置关闭限流，只修改 `rate_limit_per_minute` 不会启用限流。
+
+演示后关闭限流：
+
+```powershell
+python tools\rule_cli.py set rate_limit_enabled false
+python tools\rule_cli.py rate-reset
 ```
 
 ### 步骤 11：一键全量验收

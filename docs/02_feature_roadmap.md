@@ -1,4 +1,4 @@
-# 02 可选功能路线图
+﻿# 02 可选功能路线图
 
 本文件整理你粘贴文本中的扩展想法。建议按优先级做，先保底，再加分。
 
@@ -21,8 +21,8 @@ daemon=True
 测试命令：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```
 
 也可以开多个 PowerShell 窗口同时执行。
@@ -83,7 +83,7 @@ python src\proxy.py --host 127.0.0.1 --port 8081 --config config.example.json
 测试命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 ```
 
 预期：
@@ -101,7 +101,7 @@ HTTP/1.1 403 Forbidden
 测试命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
 ```
 
 预期：
@@ -154,8 +154,8 @@ curl -I -x http://127.0.0.1:8080 https://blocked.test/
 测试命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://example.com/
-curl -i -x http://127.0.0.1:8080 http://not-allowed.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://example.com/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://not-allowed.test/
 ```
 
 ### 8. 客户端 IP 限制
@@ -196,9 +196,9 @@ netstat -ano | findstr 8080
 测试命令：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 curl -x http://127.0.0.1:8080 http://blocked.test/
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```
 
 ## 优先级 C：只建议写进展望
@@ -213,8 +213,8 @@ curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 测试命令设想：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 第二次日志中显示：
@@ -232,7 +232,7 @@ CACHE_HIT
 测试命令：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```
 
 预期：
@@ -251,7 +251,7 @@ secret -> ***
 测试命令设想：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期：

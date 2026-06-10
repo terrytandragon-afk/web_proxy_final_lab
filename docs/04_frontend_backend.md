@@ -1,4 +1,4 @@
-# 04 前后端拆解说明
+﻿# 04 前后端拆解说明
 
 本项目现在拆成两个后端端口和一个前端页面。
 
@@ -354,25 +354,25 @@ python src\proxy.py --config config.example.json
 访问普通页面：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 访问敏感词页面：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```
 
 访问 URL 关键字页面：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 ```
 
 访问域名黑名单：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 验证 HTTPS CONNECT：

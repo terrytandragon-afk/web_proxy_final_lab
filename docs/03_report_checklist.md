@@ -1,4 +1,4 @@
-# 03 实验报告与截图清单
+﻿# 03 实验报告与截图清单
 
 ## 1. 报告结构
 
@@ -66,7 +66,7 @@ Proxy started at 127.0.0.1:8080
 命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 截图内容：
@@ -80,7 +80,7 @@ HTTP/1.0 200 OK
 命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 截图内容：
@@ -94,7 +94,7 @@ HTTP/1.1 403 Forbidden
 命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
 ```
 
 截图内容：
@@ -197,7 +197,7 @@ python tools\rule_cli.py update blocked_content_keywords classroom lecture
 验证新增后过滤：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 删除正文关键字：
@@ -264,8 +264,8 @@ stage10 cache smoke test passed
 手动展示时可以连续访问同一 URL：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 管理前端中截图：
@@ -405,7 +405,7 @@ stage13 auth smoke test passed
 手动展示命令：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
 ```
 
 ### 截图 N：访问频率限制

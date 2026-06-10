@@ -1,4 +1,4 @@
-# 00 环境准备
+﻿# 00 环境准备
 
 你的环境是 Windows + Docker 命令行 + VS Code，所以建议先用 Windows 本机开发，遇到环境问题再放到 Docker 里跑。
 
@@ -128,5 +128,5 @@ python src\proxy.py --host 127.0.0.1 --port 8080 --config config.example.json
 通过代理访问本地 Web 服务器：
 
 ```powershell
-curl -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```

@@ -14,6 +14,7 @@ WEB_FEATURE_TESTS = [
     "stage14_rate_limit_smoke.py",
     "acceptance_web_evidence_smoke.py",
     "frontend_script_syntax_smoke.py",
+    "manual_acceptance_workflow_smoke.py",
 ]
 
 

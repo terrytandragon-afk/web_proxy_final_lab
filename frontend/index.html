@@ -821,7 +821,7 @@
           <label for="rateEnabledInput">启用访问限流</label>
         </div>
         <div class="field">
-          <label for="rateLimitInput">每分钟请求上限</label>
+          <label for="rateLimitInput">时间窗口内请求上限</label>
           <input id="rateLimitInput" type="number" min="1" value="${escapeHtml(config.rate_limit_per_minute || 60)}">
         </div>
         <div class="field">

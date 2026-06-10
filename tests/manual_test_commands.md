@@ -1,13 +1,23 @@
-# 手工测试命令
+﻿# 手工测试命令
 
 ## 1. 启动本地测试网站
 
 终端 1：
 
 ```powershell
-cd E:\eve_jump\web_proxy_final_lab\tests\webroot
-python -m http.server 9000
+cd E:\eve_jump\web_proxy_final_lab
+python tests\manual_demo_server.py
 ```
+
+该脚本同时启动 `9000` HTTP 测试站和 `9001` CONNECT 回显目标，并提供存在的 `/game/index.html`、独立正文测试页、缓存页和限流页。
+
+PowerShell 访问本机测试站时，代理命令必须加入：
+
+```text
+--noproxy no-host-bypass.invalid
+```
+
+否则 Windows `curl.exe` 可能根据 `NO_PROXY` 绕过代理，使过滤、缓存和限流看起来全部失效。
 
 ## 1.1 快速烟测
 
@@ -114,13 +124,13 @@ curl -i http://127.0.0.1:9000/
 访问敏感词页面：
 
 ```powershell
-curl -i http://127.0.0.1:9000/forbidden.html
+curl.exe -i http://127.0.0.1:9000/content-test.html
 ```
 
 ## 4. 经过代理访问普通页面
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期：
@@ -132,7 +142,7 @@ HTTP/1.0 200 OK
 ## 5. 经过代理访问敏感词页面
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/forbidden.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/content-test.html
 ```
 
 预期：
@@ -150,7 +160,7 @@ This page is blocked by keyword filter.
 ## 6. 域名黑名单测试
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://blocked.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blocked.test/
 ```
 
 预期：
@@ -161,8 +171,14 @@ HTTP/1.1 403 Forbidden
 
 ## 7. URL 关键字拦截测试
 
+先确保 URL 规则存在：
+
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
+python tools\rule_cli.py add blocked_url_keywords game
+```
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 ```
 
 预期：
@@ -174,7 +190,7 @@ HTTP/1.1 403 Forbidden
 ## 8. 请求方法过滤测试
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 -X DELETE http://127.0.0.1:9000/
 ```
 
 预期：
@@ -220,7 +236,7 @@ curl.exe -X POST http://127.0.0.1:8088/api/rules/add -H "Content-Type: applicati
 验证新增生效：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 修改正文关键字 classroom 为 lecture：
@@ -354,7 +370,7 @@ python tools\rule_cli.py add blocked_client_ips 127.0.0.0/24
 通过代理访问，预期返回 `403` 和 `client_ip_blacklist`：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 删除规则并恢复访问：
@@ -416,6 +432,14 @@ cd E:\eve_jump\web_proxy_final_lab
 python tests\stage9_connect_smoke.py
 ```
 
+手动证明 CONNECT 建立后确实转发了数据：
+
+```powershell
+python tests\manual_connect_tunnel.py
+```
+
+预期出现 `echo:hello-through-manual-tunnel` 和 `manual CONNECT tunnel data forwarding passed`。
+
 如果网络环境允许，可以测试外部 HTTPS 网站：
 
 ```powershell
@@ -454,8 +478,13 @@ python tests\stage10_cache_smoke.py
 手动测试：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+python tools\rule_cli.py set cache_enabled true
+curl.exe -X POST http://127.0.0.1:8088/api/cache/clear
+```
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/cache.txt
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/cache.txt
 ```
 
 命令含义：
@@ -476,6 +505,7 @@ curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 
 ```text
 第一次请求缓存未命中，第二次请求缓存命中。
+两次响应中的 X-Upstream-Hit 和 upstream-hit 都应为 1。
 管理前端的“缓存命中”“缓存未命中”“缓存条目”会变化。
 ```
 
@@ -491,7 +521,7 @@ python tests\stage13_auth_smoke.py
 手动测试认证通过：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
 ```
 
 命令含义：
@@ -514,14 +544,25 @@ python tests\stage14_rate_limit_smoke.py
 手动测试时，启用限流后连续请求：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+python tools\rule_cli.py set rate_limit_enabled true
+python tools\rule_cli.py set rate_limit_per_minute 1
+python tools\rule_cli.py set rate_limit_window_seconds 60
+python tools\rule_cli.py rate-reset
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/rate-limit.txt
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/rate-limit.txt
 ```
 
 预期：
 
 ```text
 HTTP/1.1 429 Too Many Requests
+```
+
+只修改 `rate_limit_per_minute` 不会启用限流；必须令 `rate_limit_enabled=true`。演示后运行：
+
+```powershell
+python tools\rule_cli.py set rate_limit_enabled false
+python tools\rule_cli.py rate-reset
 ```
 
 ## 15. 过滤规则增删改查自动测试

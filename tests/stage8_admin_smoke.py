@@ -240,6 +240,7 @@ def main():
         assert "当前运行".encode("utf-8") in body
         assert "最近验收".encode("utf-8") in body
         assert "总拦截".encode("utf-8") in body
+        assert "时间窗口内请求上限".encode("utf-8") in body
 
         status, body = get("/logs.html")
         assert status == 200

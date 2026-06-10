@@ -1,4 +1,4 @@
-# 05 模块实现清单与命令说明
+﻿# 05 模块实现清单与命令说明
 
 本文件用于课程展示和验收。每完成一个功能模块，都在这里记录：
 
@@ -472,8 +472,8 @@ python src\proxy.py --config config.example.json
 连续访问同一页面两次：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 命令参数含义：
@@ -625,13 +625,13 @@ python src\proxy.py --config config.example.json
 访问允许域名：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 访问非白名单域名：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://not-allowed.test/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://not-allowed.test/
 ```
 
 命令参数含义：
@@ -763,13 +763,13 @@ python tests\stage13_auth_smoke.py
 启用认证后，未认证访问：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 正确认证访问：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 --proxy-user student:123456 http://127.0.0.1:9000/
 ```
 
 命令参数含义：
@@ -839,8 +839,8 @@ python tests\stage14_rate_limit_smoke.py
 启用限流后，连续快速访问：
 
 ```powershell
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
-curl -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
 ```
 
 预期现象：
@@ -1153,7 +1153,7 @@ value
 新增后访问正文包含该关键字的页面：
 
 ```powershell
-curl.exe -i -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/classroom.html
 ```
 
 如果页面正文包含新关键字，预期结果：
@@ -1654,3 +1654,28 @@ python tests\run_all_smoke.py
 - `acceptance_web_evidence_smoke.py`：验证验收日志能够重建首页统计，并验证普通新进程可以读取该统计。
 - `stage8_admin_smoke.py`：验证首页包含数据源切换和验收汇总 API。
 - `run_all_smoke.py`：运行全部 Web、规则管理和证据隔离回归。
+
+## 阶段 26：确定性手动验收环境与本机代理修复
+
+### 实现内容
+
+- 新增 `manual_demo_server.py`，统一提供 HTTP 测试站与 CONNECT TCP 回显目标，不再依赖启动目录或公网。
+- 新增独立的 `/content-test.html` 与真实存在的 `/game/index.html`，避免 URL 过滤和正文过滤互相抢先命中，也避免把上游 `404` 误认为 URL 模块故障。
+- 缓存测试页返回 `X-Upstream-Hit` 和正文命中计数，可直接证明第二次响应来自代理缓存。
+- 新增 `manual_connect_tunnel.py`，在 CONNECT 建立后发送并接收回显数据，证明隧道不只是完成握手。
+- 手动验收命令加入 `--noproxy no-host-bypass.invalid`，防止 Windows `curl.exe` 对本机地址绕过代理。
+- 限流手动验收明确要求同时设置 `rate_limit_enabled=true`、窗口上限、窗口秒数并清空计数。
+- 管理前端将“每分钟请求上限”改为“时间窗口内请求上限”，与实际固定窗口算法一致。
+- 新增 `manual_acceptance_workflow_smoke.py`，使用现场命令语义回归 URL、正文、缓存、隧道和限流。
+
+### 验证命令
+
+```powershell
+python tests\manual_acceptance_workflow_smoke.py
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `manual_acceptance_workflow_smoke.py`：自动复现修正后的完整手动验收流程。
+- `run_all_smoke.py`：确认手动验收资源和说明更新没有影响其他功能。
