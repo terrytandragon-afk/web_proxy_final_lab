@@ -155,6 +155,7 @@ def main():
     assert stats["total_requests"] >= 3
     assert stats["allowed_requests"] >= 2
     assert stats["blocked_domain"] >= 1
+    assert stats["total_blocked"] >= 1
     assert stats["cache_hits"] >= 1
     assert stats["cache_misses"] >= 1
     assert stats["cache_entries"] >= 1

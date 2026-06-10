@@ -1626,3 +1626,31 @@ python tests\run_all_smoke.py
 - `stage16_rule_cli_smoke.py`：验证命令行新增、修改、删除客户端网段规则后立即生效。
 - `acceptance_web_evidence_smoke.py`：确认客户端 IP 拦截进入前端可查询的 Web 拦截证据。
 - `acceptance_rule_evidence_smoke.py`：确认客户端 IP 规则操作进入规则变更证据。
+
+## 阶段 25：首页完整显示最近验收结果
+
+### 实现内容
+
+- 新增 `/api/evidence/dashboard`，根据持久化 Web 验收日志重建首页统计、域名排行和关键字排行。
+- 新增“总拦截”指标，统一汇总域名、客户端、URL、方法、正文、认证和限流拦截，并支持点击查询全部拦截日志。
+- 首页新增“当前运行 / 最近验收”数据源切换，统一控制统计数字、排行、右侧日志、规则变更回显和统计详情链接。
+- 存在验收证据时，普通管理端首页默认显示最近验收结果，解决新进程内存统计为零导致首页无内容的问题。
+- 规则和运行设置修改仍只作用于当前运行配置；执行修改时首页自动切回当前运行数据。
+- 新增 `frontend_script_syntax_smoke.py`，使用 Node.js 检查三个管理页面的内联 JavaScript 语法；未安装 Node.js 时明确跳过，不影响 Python 代理运行。
+- 新增自动测试，复现“新启动普通管理端实时统计为零，但首页可以读取最近验收汇总”的现场验收流程。
+
+### 验证命令
+
+```powershell
+python tests\frontend_script_syntax_smoke.py
+python tests\acceptance_web_evidence_smoke.py
+python tests\stage8_admin_smoke.py
+python tests\run_all_smoke.py
+```
+
+命令含义：
+
+- `frontend_script_syntax_smoke.py`：检查首页、日志详情页和规则变更详情页的 JavaScript 语法。
+- `acceptance_web_evidence_smoke.py`：验证验收日志能够重建首页统计，并验证普通新进程可以读取该统计。
+- `stage8_admin_smoke.py`：验证首页包含数据源切换和验收汇总 API。
+- `run_all_smoke.py`：运行全部 Web、规则管理和证据隔离回归。

@@ -1453,7 +1453,7 @@ tests\run_web_features_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 10/10
+Passed tests: 11/11
 Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log
 ```
 
@@ -1482,7 +1482,7 @@ tests\run_rule_management_smoke.py
 
 ```text
 PASSED batch: rule groups and runtime modes
-Passed tests: 6/6
+Passed tests: 7/7
 Rule evidence: tests/evidence/rules/changes.jsonl
 ```
 
@@ -1504,9 +1504,9 @@ tests\run_all_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 10/10
+Passed tests: 11/11
 PASSED batch: rule groups and runtime modes
-Passed tests: 6/6
+Passed tests: 7/7
 Web/proxy evidence isolation verified
 all test batches passed
 ```
@@ -1804,7 +1804,7 @@ http://127.0.0.1:8088/
 - `Web 拦截日志`：查看域名、URL、HTTP 方法、正文、认证和限流拦截。
 - `规则变更总览`：查看全部规则变更，并按操作类型、规则组或全文关键字筛选。
 
-首页原有统计数字、规则变更回显和右侧日志仍表示“当前运行”；“批量验收证据”表示最近一次自动验收结果，两者不会互相覆盖。
+首页提供“当前运行 / 最近验收”数据源切换。选择“最近验收”后，总请求、总拦截、各类拦截次数、排行、右侧日志和规则变更回显会统一显示最近一次自动验收结果；选择“当前运行”后会统一显示本次代理进程数据。两类数据不会互相覆盖。
 
 ### 3. 用命令行查询与前端相同的 Web 验收日志
 
@@ -2099,3 +2099,36 @@ python tests\run_all_smoke.py
 3. 定时规则：支持指定星期和时间段启用规则组。
 4. SQLite 审计存储：支持大量日志分页、趋势统计和按字段聚合。
 5. HTTPS MITM 正文过滤：实现复杂且有证书信任风险，只建议写入展望。
+
+## 十五、验收后检查首页汇总
+
+一键验收并启动普通代理：
+
+```powershell
+python tests\run_all_smoke.py
+python src\proxy.py --config config.example.json
+```
+
+如果 `8088` 已被之前启动的代理占用，先在旧代理终端按 `Ctrl+C` 停止它，再执行第二条启动命令。刷新网页只能重新加载前端文件，不能让旧 Python 进程自动加载新后端 API。
+
+打开 `http://127.0.0.1:8088/`。存在验收证据时，首页默认选中“最近验收”，因此新启动代理进程即使实时请求数为 `0`，首页仍会显示刚才验收得到的总请求、拦截、排行、日志和规则变更。
+
+通过命令行对比两类首页数据：
+
+```powershell
+curl.exe http://127.0.0.1:8088/api/stats
+curl.exe http://127.0.0.1:8088/api/evidence/dashboard
+curl.exe "http://127.0.0.1:8088/api/logs?profile=web&kind=blocked&limit=100"
+curl.exe "http://127.0.0.1:8088/api/evidence/changes/query?profile=rules&limit=100"
+```
+
+命令和参数含义：
+
+- `curl.exe`：使用 Windows 自带的 curl 客户端发送 HTTP 请求。
+- `/api/stats`：查询当前代理进程的实时首页统计。
+- `/api/evidence/dashboard`：根据最近一次 Web 验收日志重建首页统计和排行。
+- `stats.total_blocked`：域名、客户端、URL、方法、正文、认证和限流拦截次数之和。
+- `profile=web`：读取隔离保存的 Web 验收证据，而不是当前运行日志。
+- `kind=blocked`：只读取拦截日志。
+- `profile=rules`：读取隔离保存的规则管理验收证据。
+- `limit=100`：最多返回最近 100 条记录。

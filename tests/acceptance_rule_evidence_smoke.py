@@ -192,6 +192,7 @@ def main():
     assert domain_add_evidence["entries"][0]["value"] == "cli-evidence.test"
     status, frontend = admin_request(ADMIN_PORT, "GET", "/")
     assert status == 200 and b"/changes.html?profile=rules" in frontend
+    assert b"/api/evidence/changes/query?profile=rules" in frontend
     status, changes_frontend = admin_request(ADMIN_PORT, "GET", "/changes.html")
     assert status == 200 and b"/api/evidence/changes/query" in changes_frontend
 

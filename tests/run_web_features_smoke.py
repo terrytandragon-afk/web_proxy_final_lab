@@ -13,6 +13,7 @@ WEB_FEATURE_TESTS = [
     "stage13_auth_smoke.py",
     "stage14_rate_limit_smoke.py",
     "acceptance_web_evidence_smoke.py",
+    "frontend_script_syntax_smoke.py",
 ]
 
 
@@ -24,7 +25,7 @@ def main():
             flush=True,
         )
         print(
-            "Normal dashboard: open http://127.0.0.1:8088/ and use Batch Acceptance Evidence",
+            "Normal dashboard: restart it, open http://127.0.0.1:8088/, and use Recent Acceptance",
             flush=True,
         )
     return result

@@ -32,6 +32,7 @@ try:
         validate_rule_type,
     )
     from .webproxy.evidence import (
+        build_evidence_dashboard,
         list_evidence_profiles,
         load_evidence_config,
         query_change_entries,
@@ -58,6 +59,7 @@ except ImportError:
         validate_rule_type,
     )
     from webproxy.evidence import (
+        build_evidence_dashboard,
         list_evidence_profiles,
         load_evidence_config,
         query_change_entries,
@@ -466,10 +468,24 @@ class RuntimeState:
             self.started_at = time.time()
 
     def snapshot(self):
+        """返回管理首页使用的实时统计快照，并派生跨类别的总拦截数。"""
         with self.lock:
             uptime_seconds = int(time.time() - self.started_at)
             stats = dict(self.stats)
             stats["cache_entries"] = len(self.cache)
+            # 总拦截用于首页总览，包含直接拒绝、正文过滤、认证和限流拒绝。
+            stats["total_blocked"] = sum(
+                stats[key]
+                for key in (
+                    "blocked_domain",
+                    "blocked_client",
+                    "blocked_url",
+                    "blocked_method",
+                    "filtered_keyword",
+                    "auth_required",
+                    "rate_limited",
+                )
+            )
             return {
                 "started_at": datetime.fromtimestamp(self.started_at).isoformat(timespec="seconds"),
                 "uptime_seconds": uptime_seconds,
@@ -1260,6 +1276,9 @@ class AdminHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/evidence/profiles":
             self.send_json({"profiles": list_evidence_profiles()})
+            return
+        if parsed.path == "/api/evidence/dashboard":
+            self.send_json(build_evidence_dashboard())
             return
         if parsed.path == "/api/evidence/changes/query":
             query = parse_qs(parsed.query)

@@ -275,8 +275,33 @@ def main():
     status, profiles_payload = admin_request(ADMIN_PORT, "GET", "/api/evidence/profiles")
     web_profile = next(item for item in profiles_payload["profiles"] if item["name"] == "web")
     assert status == 200 and web_profile["blocked_log_count"] >= 1
+    status, dashboard_payload = admin_request(ADMIN_PORT, "GET", "/api/evidence/dashboard")
+    assert status == 200 and dashboard_payload["source"] == "evidence"
+    assert dashboard_payload["stats"]["total_requests"] == 12
+    assert dashboard_payload["stats"]["total_blocked"] == 7
+    assert dashboard_payload["stats"]["allowed_requests"] == 5
+    assert dashboard_payload["stats"]["blocked_domain"] == 1
+    assert dashboard_payload["stats"]["blocked_client"] == 1
+    assert dashboard_payload["stats"]["filtered_keyword"] == 1
+    assert dashboard_payload["stats"]["https_tunnels"] == 1
+    assert dashboard_payload["stats"]["cache_hits"] == 1
+    assert dashboard_payload["stats"]["auth_required"] == 1
+    assert dashboard_payload["stats"]["rate_limited"] == 1
     status, frontend = admin_request(ADMIN_PORT, "GET", "/")
     assert status == 200 and b"/logs.html?profile=web" in frontend
+    assert b"/api/evidence/dashboard" in frontend
+
+    # Reproduce the classroom workflow: a newly started ordinary admin process has
+    # zero in-memory stats but can still rebuild the whole homepage from evidence.
+    # Use a port outside both acceptance batches so this test is also safe in parallel.
+    ordinary_port = 18302
+    ordinary_server = proxy.start_admin_server(HOST, ordinary_port, proxy.RuntimeState({}))
+    status, ordinary_stats = admin_request(ordinary_port, "GET", "/api/stats")
+    assert status == 200 and ordinary_stats["stats"]["total_requests"] == 0
+    status, ordinary_evidence = admin_request(ordinary_port, "GET", "/api/evidence/dashboard")
+    assert status == 200 and ordinary_evidence["stats"]["total_requests"] == 12
+    ordinary_server.shutdown()
+    ordinary_server.server_close()
 
     print("acceptance web evidence smoke test passed")
     print(f"evidence config: {EVIDENCE_CONFIG}")

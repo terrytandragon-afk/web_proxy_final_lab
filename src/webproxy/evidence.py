@@ -1,5 +1,8 @@
 import json
+from collections import Counter
+from datetime import datetime
 
+from .audit import parse_log_line
 from .config_rules import PROJECT_ROOT, load_config
 
 
@@ -129,4 +132,136 @@ def query_change_entries(profile_name, action="", rule_type="", search="", limit
         "rule_type_counts": rule_type_counts,
         # Persisted files are chronological; detail pages show newest records first.
         "entries": list(reversed(matched_entries[-bounded_limit:])),
+    }
+
+
+def build_evidence_dashboard():
+    """Rebuild the main dashboard snapshot from the latest persisted Web evidence."""
+    config = load_evidence_config("web")
+    proxy_log_path = _config_path(config, "log_file")
+    lines = (
+        proxy_log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        if proxy_log_path and proxy_log_path.exists()
+        else []
+    )
+    entries = [parse_log_line(line) for line in lines]
+
+    # These events finish one proxy request. Intermediate events such as CACHE_MISS
+    # and RATE_ALLOW are counted separately but must not inflate total_requests.
+    terminal_events = {
+        "ALLOW",
+        "CACHE_HIT",
+        "BLOCK",
+        "FILTER",
+        "CONNECT",
+        "AUTH_REQUIRED",
+        "RATE_LIMIT",
+        "ERROR",
+    }
+    stats = {
+        "total_requests": 0,
+        "allowed_requests": 0,
+        "blocked_domain": 0,
+        "blocked_client": 0,
+        "blocked_url": 0,
+        "blocked_method": 0,
+        "filtered_keyword": 0,
+        "https_tunnels": 0,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_entries": 0,
+        "auth_required": 0,
+        "rate_limited": 0,
+        "bad_requests": 0,
+        "errors": 0,
+        "bytes_from_clients": 0,
+        "bytes_to_clients": 0,
+    }
+    host_hits = Counter()
+    keyword_hits = Counter()
+    cache_keys = set()
+    pending_cache_misses = set()
+    event_times = []
+
+    for entry in entries:
+        event = entry["event"]
+        fields = entry.get("fields", {})
+        host = fields.get("host", "")
+        path = fields.get("path", "")
+        reason = fields.get("reason", "")
+
+        if entry.get("time"):
+            try:
+                event_times.append(datetime.fromisoformat(entry["time"]))
+            except ValueError:
+                pass
+        if event in terminal_events:
+            stats["total_requests"] += 1
+            if host:
+                host_hits[host] += 1
+        if event in {"ALLOW", "CACHE_HIT", "CONNECT"}:
+            stats["allowed_requests"] += 1
+        if event == "BLOCK":
+            if reason.startswith("domain_"):
+                stats["blocked_domain"] += 1
+            elif reason.startswith("client_ip_"):
+                stats["blocked_client"] += 1
+            elif reason.startswith("url_keyword:"):
+                stats["blocked_url"] += 1
+            elif reason == "method_blacklist":
+                stats["blocked_method"] += 1
+        elif event == "FILTER":
+            stats["filtered_keyword"] += 1
+            keyword = fields.get("keyword", "")
+            if keyword:
+                keyword_hits[keyword] += 1
+        elif event == "CONNECT":
+            stats["https_tunnels"] += 1
+        elif event == "CACHE_HIT":
+            stats["cache_hits"] += 1
+        elif event == "CACHE_MISS":
+            stats["cache_misses"] += 1
+        elif event == "AUTH_REQUIRED":
+            stats["auth_required"] += 1
+        elif event == "RATE_LIMIT":
+            stats["rate_limited"] += 1
+        elif event == "ERROR":
+            stats["errors"] += 1
+            if "bad_request" in entry.get("message", ""):
+                stats["bad_requests"] += 1
+
+        cache_key = (host, path)
+        if event == "CACHE_MISS" and host:
+            pending_cache_misses.add(cache_key)
+        elif event == "CACHE_HIT" and host:
+            cache_keys.add(cache_key)
+        elif event == "ALLOW" and cache_key in pending_cache_misses:
+            # A miss followed by ALLOW is stored; a miss followed by FILTER is not.
+            cache_keys.add(cache_key)
+
+    stats["cache_entries"] = len(cache_keys)
+    # 与实时首页口径一致，汇总所有会阻止客户端获得原始目标响应的事件。
+    stats["total_blocked"] = sum(
+        stats[key]
+        for key in (
+            "blocked_domain",
+            "blocked_client",
+            "blocked_url",
+            "blocked_method",
+            "filtered_keyword",
+            "auth_required",
+            "rate_limited",
+        )
+    )
+    first_time = min(event_times).isoformat(sep=" ", timespec="seconds") if event_times else ""
+    last_time = max(event_times).isoformat(sep=" ", timespec="seconds") if event_times else ""
+    elapsed = int((max(event_times) - min(event_times)).total_seconds()) if event_times else 0
+    return {
+        "source": "evidence",
+        "started_at": first_time,
+        "finished_at": last_time,
+        "uptime_seconds": elapsed,
+        "stats": stats,
+        "top_hosts": host_hits.most_common(10),
+        "keyword_hits": keyword_hits.most_common(10),
     }

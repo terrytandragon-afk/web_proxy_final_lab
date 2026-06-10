@@ -234,8 +234,12 @@ def main():
         assert "重置统计".encode("utf-8") in body
         assert "清空日志".encode("utf-8") in body
         assert b"/api/evidence/profiles" in body
+        assert b"/api/evidence/dashboard" in body
         assert b"/logs.html?profile=web" in body
         assert b"/changes.html?profile=rules" in body
+        assert "当前运行".encode("utf-8") in body
+        assert "最近验收".encode("utf-8") in body
+        assert "总拦截".encode("utf-8") in body
 
         status, body = get("/logs.html")
         assert status == 200

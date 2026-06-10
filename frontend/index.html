@@ -202,6 +202,32 @@
       flex-wrap: wrap;
     }
 
+    .source-switch {
+      display: inline-flex;
+      gap: 2px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+      padding: 2px;
+    }
+
+    .source-switch button {
+      min-height: 28px;
+      border: 0;
+      background: transparent;
+      padding: 0 10px;
+    }
+
+    .source-switch button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .source-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .evidence-link {
       min-height: 34px;
       border: 1px solid var(--line);
@@ -527,10 +553,14 @@
     <div class="metrics" id="metrics"></div>
     <div class="evidence-bar">
       <div>
-        <h2>批量验收证据</h2>
+        <h2>首页数据源</h2>
         <div class="subtitle" id="evidenceStatus">正在检查批量测试证据</div>
       </div>
       <div class="evidence-links">
+        <div class="source-switch" aria-label="首页数据源">
+          <button class="source-button" data-source="current" type="button">当前运行</button>
+          <button class="source-button" data-source="evidence" type="button">最近验收</button>
+        </div>
         <a class="evidence-link" href="/logs.html?profile=web&kind=proxy&title=Web验收访问">Web 访问日志</a>
         <a class="evidence-link" href="/logs.html?profile=web&kind=blocked&title=Web验收拦截">Web 拦截日志</a>
         <a class="evidence-link" href="/changes.html?profile=rules">规则变更总览</a>
@@ -560,6 +590,7 @@
         <section style="margin-top:16px">
           <div class="section-title">
             <h2>规则变更回显</h2>
+            <span class="source-label" id="changeSourceLabel"></span>
             <select id="changeFilter">
               <option value="all">全部操作</option>
               <option value="add">新增</option>
@@ -580,6 +611,7 @@
       <section>
         <div class="logs-header">
           <h2>日志</h2>
+          <span class="source-label" id="logsSourceLabel"></span>
           <div class="tabs">
             <button class="tab active" data-log="proxy" type="button">访问</button>
             <button class="tab" data-log="blocked" type="button">拦截</button>
@@ -620,11 +652,15 @@
       config: null,
       rules: null,
       stats: null,
-      changes: []
+      changes: [],
+      dashboardSource: "current",
+      sourceInitialized: false,
+      evidenceProfiles: []
     };
 
     const metricDefs = [
       { key: "total_requests", label: "总请求", kind: "proxy" },
+      { key: "total_blocked", label: "总拦截", kind: "blocked" },
       { key: "allowed_requests", label: "放行", kind: "proxy", event: "ALLOW,CACHE_HIT,CONNECT" },
       { key: "blocked_domain", label: "域名拦截", kind: "blocked", event: "BLOCK", search: "domain_" },
       { key: "blocked_client", label: "客户端拦截", kind: "blocked", event: "BLOCK", search: "client_ip_" },
@@ -838,10 +874,15 @@
       `).join("");
       document.getElementById("metrics").innerHTML = metrics;
 
-      const minutes = Math.floor((snapshot.uptime_seconds || 0) / 60);
-      const seconds = (snapshot.uptime_seconds || 0) % 60;
-      document.getElementById("runtime").textContent =
-        `启动时间 ${snapshot.started_at || "-"}，已运行 ${minutes} 分 ${seconds} 秒`;
+      if (snapshot.source === "evidence") {
+        document.getElementById("runtime").textContent =
+          `首页正在显示最近验收证据：${snapshot.started_at || "-"} 至 ${snapshot.finished_at || "-"}`;
+      } else {
+        const minutes = Math.floor((snapshot.uptime_seconds || 0) / 60);
+        const seconds = (snapshot.uptime_seconds || 0) % 60;
+        document.getElementById("runtime").textContent =
+          `启动时间 ${snapshot.started_at || "-"}，已运行 ${minutes} 分 ${seconds} 秒`;
+      }
 
       renderTable("topHosts", snapshot.top_hosts || [], "暂无域名访问记录");
       renderTable("keywordHits", snapshot.keyword_hits || [], "暂无关键字命中记录");
@@ -850,6 +891,7 @@
     function metricLogHref(metric) {
       // 每个统计项对应一次只读日志查询，详情页会把查询条件和结果同时展示出来。
       const query = new URLSearchParams({ kind: metric.kind || "proxy", title: metric.label });
+      if (state.dashboardSource === "evidence") query.set("profile", "web");
       if (metric.event) query.set("event", metric.event);
       if (metric.search) query.set("search", metric.search);
       return `/logs.html?${query.toString()}`;
@@ -879,20 +921,28 @@
     }
 
     async function loadChanges() {
-      // The backend keeps this history, so curl.exe and tools/rule_cli.py changes are visible too.
-      const payload = await getJson("/api/changes?limit=80");
-      state.changes = payload.changes || [];
+      // Current changes come from memory/current JSONL; evidence changes come from the rules batch.
+      const evidence = state.dashboardSource === "evidence";
+      const endpoint = evidence
+        ? "/api/evidence/changes/query?profile=rules&limit=80"
+        : "/api/changes?limit=80";
+      const payload = await getJson(endpoint);
+      state.changes = evidence ? (payload.entries || []) : (payload.changes || []);
       renderChangeLog();
     }
 
     async function loadStats() {
-      const payload = await getJson("/api/stats");
+      const endpoint = state.dashboardSource === "evidence"
+        ? "/api/evidence/dashboard"
+        : "/api/stats";
+      const payload = await getJson(endpoint);
       state.stats = payload;
       renderStats(payload);
     }
 
     async function loadLogs() {
-      const payload = await getJson(`/api/logs?kind=${encodeURIComponent(state.currentLog)}&limit=160`);
+      const profile = state.dashboardSource === "evidence" ? "&profile=web" : "";
+      const payload = await getJson(`/api/logs?kind=${encodeURIComponent(state.currentLog)}&limit=160${profile}`);
       const logs = document.getElementById("logs");
       logs.textContent = payload.logs && payload.logs.length
         ? payload.logs.join("\n")
@@ -904,30 +954,73 @@
       // Batch evidence remains isolated from current runtime data but is visible here.
       const payload = await getJson("/api/evidence/profiles");
       const profiles = payload.profiles || [];
+      state.evidenceProfiles = profiles;
       const web = profiles.find(item => item.name === "web") || {};
       const rules = profiles.find(item => item.name === "rules") || {};
       document.getElementById("evidenceStatus").textContent =
         `Web：访问 ${web.proxy_log_count || 0}，拦截 ${web.blocked_log_count || 0}；规则变更：${rules.change_count || 0}`;
     }
 
+    function applyDashboardSource(source) {
+      // One source selection drives metrics, rankings, logs, changes, and metric detail links.
+      state.dashboardSource = source;
+      document.querySelectorAll(".source-button").forEach(button => {
+        button.classList.toggle("active", button.dataset.source === source);
+      });
+      const label = source === "evidence" ? "最近验收" : "当前运行";
+      document.getElementById("changeSourceLabel").textContent = label;
+      document.getElementById("logsSourceLabel").textContent = label;
+    }
+
+    async function setDashboardSource(source, announce = true) {
+      const web = state.evidenceProfiles.find(item => item.name === "web") || {};
+      const rules = state.evidenceProfiles.find(item => item.name === "rules") || {};
+      if (source === "evidence" && !(web.proxy_log_count || rules.change_count)) {
+        throw new Error("尚未生成批量验收证据，请先运行 python tests\\run_all_smoke.py");
+      }
+      applyDashboardSource(source);
+      await Promise.all([loadStats(), loadLogs(), loadChanges()]);
+      if (announce) {
+        setNotice(source === "evidence" ? "首页已切换到最近验收证据" : "首页已切换到当前运行数据", "ok");
+      }
+    }
+
+    async function initializeDashboardSource() {
+      await loadEvidenceProfiles();
+      const web = state.evidenceProfiles.find(item => item.name === "web") || {};
+      const rules = state.evidenceProfiles.find(item => item.name === "rules") || {};
+      // After one-click acceptance, make its persisted results the useful first view.
+      applyDashboardSource((web.proxy_log_count || rules.change_count) ? "evidence" : "current");
+      state.sourceInitialized = true;
+    }
+
     async function refreshAll() {
-      await Promise.all([loadConfig(), loadRules(), loadStats(), loadLogs(), loadChanges(), loadEvidenceProfiles()]);
+      if (!state.sourceInitialized) {
+        await Promise.all([loadConfig(), loadRules(), initializeDashboardSource()]);
+      } else {
+        await Promise.all([loadConfig(), loadRules(), loadEvidenceProfiles()]);
+      }
+      await Promise.all([loadStats(), loadLogs(), loadChanges()]);
       renderChangeLog();
     }
 
     async function addRule(ruleType, value) {
+      // Mutations always target the live proxy, so return the dashboard to live data.
+      applyDashboardSource("current");
       const result = await postJson("/api/rules/add", { rule_type: ruleType, value });
       recordChange("add", result);
       await Promise.all([loadConfig(), loadRules(), loadChanges()]);
     }
 
     async function deleteRule(ruleType, value) {
+      applyDashboardSource("current");
       const result = await postJson("/api/rules/delete", { rule_type: ruleType, value });
       recordChange("delete", result);
       await Promise.all([loadConfig(), loadRules(), loadChanges()]);
     }
 
     async function updateRule(ruleType, oldValue, newValue) {
+      applyDashboardSource("current");
       const result = await postJson("/api/rules/update", {
         rule_type: ruleType,
         old_value: oldValue,
@@ -938,6 +1031,7 @@
     }
 
     async function replaceRuleGroup(ruleType, values) {
+      applyDashboardSource("current");
       const result = await postJson("/api/rules/replace", {
         rule_type: ruleType,
         values
@@ -948,6 +1042,7 @@
 
     async function saveSettings() {
       // 保存设置后立即刷新，代理线程后续请求会读取新的运行配置。
+      applyDashboardSource("current");
       let authUsers = {};
       try {
         authUsers = JSON.parse(document.getElementById("authUsersInput").value || "{}");
@@ -971,24 +1066,28 @@
     }
 
     async function reloadConfig() {
+      applyDashboardSource("current");
       await postJson("/api/reload");
       setNotice("已从配置文件重新加载", "ok");
       await refreshAll();
     }
 
     async function clearCache() {
+      applyDashboardSource("current");
       await postJson("/api/cache/clear");
       setNotice("缓存已清空", "ok");
       await refreshAll();
     }
 
     async function resetStats() {
+      applyDashboardSource("current");
       await postJson("/api/stats/reset");
       setNotice("统计已重置", "ok");
       await refreshAll();
     }
 
     async function clearLogs() {
+      applyDashboardSource("current");
       await postJson("/api/logs/clear");
       setNotice("日志已清空", "ok");
       await refreshAll();
@@ -1003,6 +1102,11 @@
     document.getElementById("clearLogsBtn").addEventListener("click", () => clearLogs().catch(showError));
     document.getElementById("saveSettingsBtn").addEventListener("click", () => saveSettings().catch(showError));
     document.getElementById("changeFilter").addEventListener("change", renderChangeLog);
+    document.querySelectorAll(".source-button").forEach(button => {
+      button.addEventListener("click", () => {
+        setDashboardSource(button.dataset.source).catch(showError);
+      });
+    });
 
     document.getElementById("ruleGroups").addEventListener("submit", event => {
       event.preventDefault();
@@ -1053,7 +1157,8 @@
     }
 
     refreshAll().then(() => {
-      setNotice("已连接后端，可以添加、删除、修改、替换、查询过滤规则。", "ok");
+      const sourceText = state.dashboardSource === "evidence" ? "最近验收证据" : "当前运行数据";
+      setNotice(`已连接后端，首页正在显示${sourceText}；规则管理始终修改当前运行配置。`, "ok");
       renderChangeLog();
     }).catch(error => {
       document.getElementById("runtime").textContent = `后端连接失败：${error.message}`;

@@ -549,3 +549,35 @@ python tests\stage16_rule_cli_smoke.py
 ```text
 stage16 rule cli smoke test passed
 ```
+
+## 17. 首页最近验收汇总测试
+
+完整验收后启动普通管理端：
+
+```powershell
+cd E:\eve_jump\web_proxy_final_lab
+python tests\run_all_smoke.py
+python src\proxy.py --config config.example.json
+```
+
+如果启动命令提示 `8088` 端口被占用，请先在旧代理终端按 `Ctrl+C`，再重新启动。网页刷新不会重新加载 Python 后端代码。
+
+浏览器打开 `http://127.0.0.1:8088/`，首页应默认选择“最近验收”，总请求、总拦截、右侧日志和规则变更回显均应有数据。
+
+命令行对比实时数据和验收证据：
+
+```powershell
+curl.exe http://127.0.0.1:8088/api/stats
+curl.exe http://127.0.0.1:8088/api/evidence/dashboard
+```
+
+- `/api/stats`：当前新进程实时统计，尚未发送代理请求时可以为 `0`。
+- `/api/evidence/dashboard`：最近一次验收产生的首页汇总，应包含请求和拦截计数。
+
+检查前端 JavaScript 语法：
+
+```powershell
+python tests\frontend_script_syntax_smoke.py
+```
+
+该测试使用 `node --check` 验证首页、日志详情页和规则变更详情页；没有安装 Node.js 时会明确提示跳过。
