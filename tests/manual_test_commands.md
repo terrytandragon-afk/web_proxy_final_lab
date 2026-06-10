@@ -19,6 +19,21 @@ PowerShell 访问本机测试站时，代理命令必须加入：
 
 否则 Windows `curl.exe` 可能根据 `NO_PROXY` 绕过代理，使过滤、缓存和限流看起来全部失效。
 
+浏览器访问本机测试站时，Edge/Chrome 也会默认绕过代理。使用项目启动器打开专用验收浏览器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
+```
+
+该窗口会强制 `127.0.0.1` 经过 `8080`。在其中访问：
+
+```text
+http://127.0.0.1:9000/content-test.html
+http://127.0.0.1:9000/game/index.html
+```
+
+预期显示代理生成的 `403` 拦截页，并可点击“查看详细信息”。若显示原网页且代理终端无新请求，说明所用浏览器窗口绕过了代理。
+
 ## 1.1 快速烟测
 
 基础 Web/代理功能批量测试：
@@ -71,6 +86,7 @@ python tests\stage14_rate_limit_smoke.py
 python tests\stage15_rule_management_smoke.py
 python tests\stage16_rule_cli_smoke.py
 python tests\stage17_runtime_settings_smoke.py
+python tests\browser_proxy_launcher_smoke.py
 ```
 
 预期：
@@ -90,6 +106,7 @@ stage14 rate limit smoke test passed
 stage15 rule management smoke test passed
 stage16 rule cli smoke test passed
 stage17 runtime settings smoke test passed
+browser proxy launcher smoke test passed
 ```
 
 ## 2. 启动代理服务器
@@ -148,13 +165,9 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 预期：
 
 ```text
+HTTP/1.1 403 Forbidden
 网页已被过滤
-```
-
-或：
-
-```text
-This page is blocked by keyword filter.
+content_keyword:forbidden
 ```
 
 ## 6. 域名黑名单测试
@@ -167,7 +180,10 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://blo
 
 ```text
 HTTP/1.1 403 Forbidden
+url_keyword:game
 ```
+
+URL 关键字检查域名、路径/子文件和查询参数，不检查网页正文，因此 `game` 会命中 `/game/index.html`。
 
 ## 7. URL 关键字拦截测试
 

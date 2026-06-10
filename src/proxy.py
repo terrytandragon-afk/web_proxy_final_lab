@@ -1,6 +1,7 @@
 import argparse
 import base64
 import fnmatch
+from html import escape
 import ipaddress
 import json
 import select
@@ -614,6 +615,78 @@ def send_simple_response(client_socket, status_code, reason, message):
     return len(response)
 
 
+def build_policy_block_response(reason, request_info=None, client_ip="", detail=""):
+    """构造替代原网页的 403 拦截提示页，并提供可展开的具体命中信息。"""
+    request_info = request_info or {}
+    reason_labels = {
+        "domain_blacklist": "目标域名命中黑名单",
+        "domain_not_in_whitelist": "目标域名不在白名单",
+        "client_ip_blacklist": "客户端地址命中黑名单",
+        "client_ip_not_allowed": "客户端地址不在白名单",
+        "method_blacklist": "HTTP 请求方法被禁止",
+    }
+    if reason.startswith("url_keyword:"):
+        summary = "请求 URL 命中禁止关键词"
+        matched_rule = reason.split(":", 1)[1]
+        legacy_message = ""
+    elif reason.startswith("content_keyword:"):
+        summary = "网页正文命中禁止关键词"
+        matched_rule = reason.split(":", 1)[1]
+        # 保留清晰的英文证据文本，方便 curl、自动测试和课程截图共同识别。
+        legacy_message = (
+            "<p><strong>网页已被过滤</strong><br>"
+            f"This page is blocked by keyword filter: {escape(matched_rule)}</p>"
+        )
+    else:
+        summary = reason_labels.get(reason, "请求被代理访问策略拦截")
+        matched_rule = detail or reason
+        legacy_message = ""
+
+    method = request_info.get("method", "")
+    host = request_info.get("host", "")
+    path = request_info.get("path", "")
+    body = (
+        "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>403 请求已被代理拦截</title>"
+        "<style>"
+        "body{margin:0;background:#f4f7fb;color:#172033;font-family:Arial,'Microsoft YaHei',sans-serif}"
+        "main{max-width:760px;margin:10vh auto;padding:0 24px}"
+        ".code{font-size:64px;font-weight:800;color:#b42318}"
+        "h1{margin:8px 0;font-size:30px}p{line-height:1.7;color:#475467}"
+        "details{margin-top:24px;border:1px solid #d0d5dd;background:#fff;padding:16px}"
+        "summary{cursor:pointer;font-weight:700}dl{display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:0}"
+        "dt{color:#667085}dd{margin:0;overflow-wrap:anywhere;font-family:Consolas,monospace}"
+        "</style></head><body><main>"
+        "<div class=\"code\">403</div><h1>请求已被 Web 代理拦截</h1>"
+        f"<p>{escape(summary)}。原网页未返回，当前页面由代理服务器生成。</p>"
+        f"{legacy_message}"
+        "<details open><summary>查看详细信息</summary><dl>"
+        f"<dt>拦截原因</dt><dd>{escape(reason)}</dd>"
+        f"<dt>命中规则</dt><dd>{escape(matched_rule)}</dd>"
+        f"<dt>请求方法</dt><dd>{escape(method)}</dd>"
+        f"<dt>目标地址</dt><dd>{escape(host + path)}</dd>"
+        f"<dt>客户端地址</dt><dd>{escape(client_ip)}</dd>"
+        "</dl></details></main></body></html>"
+    ).encode("utf-8")
+    return (
+        b"HTTP/1.1 403 Forbidden\r\n"
+        b"Content-Type: text/html; charset=utf-8\r\n"
+        b"Cache-Control: no-store\r\n"
+        + f"Content-Length: {len(body)}\r\n".encode("ascii")
+        + b"Connection: close\r\n"
+        + b"\r\n"
+        + body
+    )
+
+
+def send_policy_block_response(client_socket, reason, request_info=None, client_ip="", detail=""):
+    """发送浏览器可直接展示的访问策略拦截页。"""
+    response = build_policy_block_response(reason, request_info, client_ip, detail)
+    client_socket.sendall(response)
+    return len(response)
+
+
 def send_auth_required_response(client_socket):
     """返回代理认证挑战响应，curl 或浏览器收到后会知道需要代理用户名密码。"""
     body = b"407 Proxy Authentication Required: valid proxy credentials required\n"
@@ -628,24 +701,6 @@ def send_auth_required_response(client_socket):
     )
     client_socket.sendall(response)
     return len(response)
-
-
-def build_keyword_block_response(keyword):
-    body = (
-        "<!doctype html><html><head><meta charset=\"utf-8\">"
-        "<title>Page Filtered</title></head><body>"
-        "<h1>网页已被过滤</h1>"
-        f"<p>This page is blocked by keyword filter: {keyword}</p>"
-        "</body></html>"
-    ).encode("utf-8")
-    return (
-        b"HTTP/1.1 200 OK\r\n"
-        b"Content-Type: text/html; charset=utf-8\r\n"
-        + f"Content-Length: {len(body)}\r\n".encode("ascii")
-        + b"Connection: close\r\n"
-        + b"\r\n"
-        + body
-    )
 
 
 def domain_matches(host, patterns):
@@ -781,7 +836,7 @@ def parse_status_code(response_bytes):
     return 0
 
 
-def filter_response_content(response_bytes, config):
+def filter_response_content(response_bytes, config, request_info=None, client_ip=""):
     """对 HTTP 明文文本响应做正文关键字过滤，二进制或压缩内容直接放行。"""
     if b"\r\n\r\n" not in response_bytes:
         return response_bytes, None
@@ -804,7 +859,15 @@ def filter_response_content(response_bytes, config):
 
     for keyword in config.get("blocked_content_keywords", []):
         if keyword.lower() in body_text_lower:
-            return build_keyword_block_response(keyword), keyword
+            return (
+                build_policy_block_response(
+                    f"content_keyword:{keyword}",
+                    request_info,
+                    client_ip,
+                    detail=keyword,
+                ),
+                keyword,
+            )
 
     return response_bytes, None
 
@@ -854,7 +917,7 @@ def build_upstream_request(request_text, request_info):
     return upstream_text.encode("iso-8859-1", errors="replace")
 
 
-def forward_http(client_socket, request_text, request_info, config):
+def forward_http(client_socket, request_text, request_info, config, client_ip=""):
     """处理普通 HTTP 请求：连接目标服务器、转发请求、接收响应、执行正文过滤。"""
     upstream_request = build_upstream_request(request_text, request_info)
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
@@ -876,7 +939,14 @@ def forward_http(client_socket, request_text, request_info, config):
 
             response_bytes = b"".join(chunks)
             status_code = parse_status_code(response_bytes)
-            response_bytes, blocked_keyword = filter_response_content(response_bytes, config)
+            response_bytes, blocked_keyword = filter_response_content(
+                response_bytes,
+                config,
+                request_info,
+                client_ip,
+            )
+            if blocked_keyword:
+                status_code = 403
             client_socket.sendall(response_bytes)
             return {
                 "outcome": "filtered" if blocked_keyword else "allowed",
@@ -1037,7 +1107,12 @@ def handle_client(client_socket, client_address, state):
         client_allowed, client_reason = check_client_access_policy(client_address[0], config)
         if not client_allowed:
             update_block_stats(state, client_reason)
-            bytes_sent = send_simple_response(client_socket, 403, "Forbidden", client_reason)
+            bytes_sent = send_policy_block_response(
+                client_socket,
+                client_reason,
+                request_info,
+                client_address[0],
+            )
             state.increment("bytes_to_clients", bytes_sent)
             log_event(
                 state,
@@ -1096,7 +1171,12 @@ def handle_client(client_socket, client_address, state):
         allowed, reason = check_access_policy(request_info, config)
         if not allowed:
             update_block_stats(state, reason)
-            bytes_sent = send_simple_response(client_socket, 403, "Forbidden", reason)
+            bytes_sent = send_policy_block_response(
+                client_socket,
+                reason,
+                request_info,
+                client_address[0],
+            )
             state.increment("bytes_to_clients", bytes_sent)
             log_event(
                 state,
@@ -1136,7 +1216,13 @@ def handle_client(client_socket, client_address, state):
         if request_info["method"] == "CONNECT":
             result = forward_connect(client_socket, request_info, config)
         else:
-            result = forward_http(client_socket, request_text, request_info, config)
+            result = forward_http(
+                client_socket,
+                request_text,
+                request_info,
+                config,
+                client_address[0],
+            )
 
         state.increment("bytes_to_clients", result.get("bytes_sent", 0))
         state.increment("bytes_from_clients", result.get("bytes_from_client", 0))

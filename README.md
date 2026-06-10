@@ -64,6 +64,8 @@ web_proxy_final_lab/
       content-test.html
       classroom.html
       game/index.html
+  tools/
+    start_proxy_browser.ps1
   docker/
     README.md
 ```
@@ -108,6 +110,14 @@ python tests\manual_demo_server.py
 ```
 
 访问本机测试站时，代理命令应包含 `--noproxy no-host-bypass.invalid`，否则 Windows `curl.exe` 可能根据 `NO_PROXY` 绕过代理，使 URL/正文过滤、缓存和限流看起来失效。完整逐模块命令见 `docs/07_manual_module_verification.md`。
+
+Edge/Chrome 还会默认绕过本机地址。浏览器验收请运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
+```
+
+该命令启动独立浏览器配置并强制 `127.0.0.1` 经过代理。命中域名、URL、方法或正文规则时，代理会用带“查看详细信息”的 `403` 页面替代原网页。
 
 前端支持规则变更回显：添加、修改、删除、替换规则组后，页面会显示操作类型、规则组、旧值/新值以及是否保存成功。
 

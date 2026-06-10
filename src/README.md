@@ -33,7 +33,7 @@ src/
 5. `parse_http_request()`：解析 method、host、port、path。
 6. `check_access_policy()`：执行域名、URL、方法、白名单策略。
 7. `forward_http()`：转发 HTTP 请求并返回响应。
-8. `filter_response_content()`：检查网页正文关键字。
+8. `filter_response_content()`：检查网页正文关键字；命中后由 `build_policy_block_response()` 返回浏览器可展示的 403 替代页。
 9. `forward_connect()`：处理 HTTPS CONNECT 隧道。
 10. `RuntimeState.add_list_rule()`：新增过滤规则并保存配置。
 11. `RuntimeState.delete_list_rule()`：删除过滤规则并保存配置。

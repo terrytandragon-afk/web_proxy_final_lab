@@ -103,6 +103,39 @@ Windows 的 `curl.exe` 经常从 `NO_PROXY` 环境变量读取 `127.0.0.1`，导
 访问 /game/index.html 时，如果看到上游 404，说明请求绕过了代理或 URL 规则尚未添加。
 ```
 
+### 3.1 浏览器本机代理验收的重要启动方式
+
+Edge/Chrome 即使配置了系统代理，也会默认绕过 `localhost` 和 `127.0.0.1`。因此，直接在普通浏览器窗口访问本机测试站时，浏览器可能完全不经过 `8080` 代理。
+
+打开第三个 PowerShell，使用项目提供的独立验收浏览器启动器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
+```
+
+命令解释：
+
+```text
+-ExecutionPolicy Bypass
+```
+
+仅为本次 PowerShell 进程允许运行项目脚本，不修改系统永久执行策略。
+
+```text
+-File tools\start_proxy_browser.ps1
+```
+
+启动一个独立配置目录的 Edge/Chrome，并传入 `--proxy-server=http://127.0.0.1:8080` 与 `--proxy-bypass-list=<-loopback>`，强制本机地址也经过代理。
+
+在这个新浏览器窗口中验证：
+
+```text
+http://127.0.0.1:9000/content-test.html
+http://127.0.0.1:9000/game/index.html
+```
+
+两者都应显示代理生成的 `403` 拦截提示页。点击“查看详细信息”可以看到拦截原因、命中规则、请求方法和目标地址。如果仍显示原网页，并且代理终端没有新请求、管理前端总请求不增加，说明当前浏览器绕过了代理。
+
 验收前准备互不冲突的规则：
 
 ```powershell
@@ -287,7 +320,7 @@ domain_blacklist
 ```text
 src/proxy.py
 filter_response_content()
-build_keyword_block_response()
+build_policy_block_response()
 ```
 
 ### 验证命令
@@ -307,9 +340,13 @@ content-test.html
 预期结果：
 
 ```text
+HTTP/1.1 403 Forbidden
 网页已被过滤
 This page is blocked by keyword filter
+content_keyword:forbidden
 ```
+
+浏览器中原网页会被代理生成的 `403` 提示页替代，可点击“查看详细信息”查看命中原因。
 
 前端观察：
 
@@ -340,7 +377,7 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 game
 ```
 
-验收前通过 `rule_cli.py` 加入的 URL 关键字。测试站中该文件真实存在，因此 `403` 能证明代理执行了 URL 拦截。
+验收前通过 `rule_cli.py` 加入的 URL 关键字。URL 关键字检查的是请求地址中的域名、路径/子文件和查询参数，不检查网页正文。因此 `game` 会拦截 `/game/index.html`、`?category=game` 或域名中包含 `game` 的请求。测试站中该文件真实存在，因此 `403` 能证明代理执行了 URL 拦截。
 
 预期结果：
 
@@ -537,6 +574,8 @@ domain_not_in_whitelist
 
 ## 十、模块 9：代理认证
 
+代理认证用于限制“谁可以使用本代理服务器”，不是目标网站的登录功能。启用后，未提供代理账号密码的浏览器或命令行客户端会收到 `407 Proxy Authentication Required`；认证通过后，代理才继续转发请求。`Proxy-Authorization` 只由代理读取，转发给目标网站前会被移除。
+
 ### 实现位置
 
 ```text
@@ -578,7 +617,7 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 --proxy-us
 --proxy-user student:123456
 ```
 
-向代理发送用户名和密码。
+向代理发送用户名和密码。它不会向目标网站提交该账号密码。
 
 预期：
 

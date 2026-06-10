@@ -48,6 +48,7 @@ def main():
     )
     assert "403 Forbidden" in url_response
     assert "url_keyword:game" in url_response
+    assert "<details open>" in url_response
 
     method_response = request_through_proxy(
         "DELETE http://127.0.0.1:19084/ HTTP/1.1\r\n"
@@ -57,6 +58,7 @@ def main():
     )
     assert "403 Forbidden" in method_response
     assert "method_blacklist" in method_response
+    assert "<details open>" in method_response
 
     print("stage7 policy smoke test passed")
 

@@ -64,9 +64,12 @@ def main():
             chunks.append(response)
 
     text = b"".join(chunks).decode("utf-8", errors="replace")
-    assert "200 OK" in text
+    assert "403 Forbidden" in text
     assert "网页已被过滤" in text
     assert "blocked by keyword filter: forbidden" in text
+    assert "content_keyword:forbidden" in text
+    assert "请求已被 Web 代理拦截" in text
+    assert "<details open>" in text
     assert "This page contains forbidden content" not in text
     print("stage6 smoke test passed")
 

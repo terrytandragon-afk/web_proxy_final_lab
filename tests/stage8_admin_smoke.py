@@ -102,6 +102,17 @@ def main():
         payload = json.loads(body.decode("utf-8"))
         assert any(group["type"] == "blocked_content_keywords" for group in payload["groups"])
         assert any(group["type"] == "blocked_client_ips" for group in payload["groups"])
+        url_group = next(
+            group for group in payload["groups"] if group["type"] == "blocked_url_keywords"
+        )
+        content_group = next(
+            group
+            for group in payload["groups"]
+            if group["type"] == "blocked_content_keywords"
+        )
+        assert "路径/子文件" in url_group["description"]
+        assert "不检查网页正文" in url_group["description"]
+        assert "403" in content_group["description"]
 
         status, body = post_json(
             "/api/rules/add",

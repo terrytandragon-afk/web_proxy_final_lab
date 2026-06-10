@@ -97,9 +97,15 @@ def main():
 
         url_block = curl_through_proxy(curl, "/game/index.html")
         assert "403 Forbidden" in url_block and "url_keyword:game" in url_block
+        assert "请求已被 Web 代理拦截" in url_block
+        assert "<details open>" in url_block
 
         content_block = curl_through_proxy(curl, "/content-test.html")
+        assert "403 Forbidden" in content_block
         assert "blocked by keyword filter: forbidden" in content_block
+        assert "content_keyword:forbidden" in content_block
+        assert "请求已被 Web 代理拦截" in content_block
+        assert "<details open>" in content_block
 
         state.clear_cache()
         first_cache = curl_through_proxy(curl, "/cache.txt")

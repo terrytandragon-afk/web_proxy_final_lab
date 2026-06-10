@@ -1679,3 +1679,32 @@ python tests\run_all_smoke.py
 
 - `manual_acceptance_workflow_smoke.py`：自动复现修正后的完整手动验收流程。
 - `run_all_smoke.py`：确认手动验收资源和说明更新没有影响其他功能。
+
+## 阶段 27：浏览器强制代理与可展开 403 拦截页
+
+### 实现内容
+
+- 修复正文关键字过滤返回 `200 OK` 的语义问题；命中正文规则后现在返回 `403 Forbidden`。
+- 域名、客户端、URL、方法和正文策略拦截统一使用浏览器可展示的 HTML 替代页，原网页不会返回。
+- 拦截页显示状态码、原因摘要，并可点击“查看详细信息”查看命中规则、请求方法、目标地址和客户端地址。
+- 新增 `tools/start_proxy_browser.ps1`，通过独立 Edge/Chrome 配置和 `--proxy-bypass-list=<-loopback>` 强制本机地址经过代理。
+- 管理前端规则说明明确：URL 关键字检查域名、路径/子文件和查询参数，不检查网页正文。
+- 文档明确代理认证用于控制客户端使用代理的权限，不是目标网站登录；代理凭据不会转发给目标网站。
+- 新增浏览器启动器烟测，并强化域名、URL、方法、正文过滤测试对 `403` 替代页和详细信息的断言。
+
+### 验证命令
+
+```powershell
+python tests\browser_proxy_launcher_smoke.py
+python tests\stage5_smoke.py
+python tests\stage6_smoke.py
+python tests\stage7_policy_smoke.py
+python tests\manual_acceptance_workflow_smoke.py
+python tests\run_all_smoke.py
+```
+
+浏览器手工验收：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
+```

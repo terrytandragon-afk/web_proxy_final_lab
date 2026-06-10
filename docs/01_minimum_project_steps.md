@@ -229,7 +229,7 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 预期现象：
 
 ```text
-HTTP/1.1 200 OK
+HTTP/1.1 403 Forbidden
 ```
 
 页面正文显示：
@@ -238,11 +238,7 @@ HTTP/1.1 200 OK
 网页已被过滤
 ```
 
-或者：
-
-```text
-This page is blocked by keyword filter.
-```
+浏览器中原网页会被代理生成的拦截页替代，可展开查看 `content_keyword:<关键字>` 等详细原因。
 
 报告截图建议：
 

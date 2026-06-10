@@ -100,14 +100,11 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 截图内容：
 
 ```text
+HTTP/1.1 403 Forbidden
 网页已被过滤
 ```
 
-或：
-
-```text
-This page is blocked by keyword filter.
-```
+浏览器演示时，使用 `tools/start_proxy_browser.ps1` 启动专用验收浏览器，截图代理替代原网页的 `403` 拦截页及“查看详细信息”区域。
 
 ### 截图 E：日志记录
 

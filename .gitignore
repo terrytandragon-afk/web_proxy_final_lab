@@ -14,3 +14,4 @@ tests/stage18_*.jsonl
 tests/stage18_client_ip_config.json
 tests/stage14_*.log
 tests/evidence/
+.manual-browser-profile/

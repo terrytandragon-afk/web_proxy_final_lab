@@ -258,6 +258,7 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 预期：
 
 ```text
+HTTP/1.1 403 Forbidden
 网页已被过滤
 blocked by keyword filter: classroom
 ```
@@ -612,6 +613,16 @@ http://127.0.0.1:8088/
 
 向代理服务器发送用户名和密码。
 
+### 浏览器访问本机测试站时强制经过代理
+
+Edge/Chrome 默认绕过 `localhost` 和 `127.0.0.1`。即使 Windows 代理设置指向 `8080`，普通浏览器窗口访问本机测试站仍可能直接连接 `9000`。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
+```
+
+该脚本启动独立 Edge/Chrome 配置，并通过 `--proxy-bypass-list=<-loopback>` 取消本机地址绕过。浏览器验收必须在这个新窗口中完成。判断浏览器是否真的经过代理：代理终端必须打印请求，管理前端“当前运行”的总请求必须增加。
+
 ## 七、逐模块验收命令
 
 ### 模块 1：HTTP 代理转发
@@ -676,8 +687,10 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 预期：
 
 ```text
+HTTP/1.1 403 Forbidden
 网页已被过滤
 blocked by keyword filter: forbidden
+content_keyword:forbidden
 ```
 
 命令解释：
@@ -707,7 +720,7 @@ url_keyword:game
 game
 ```
 
-验收前通过命令行加入的 URL 关键字。测试站中 `/game/index.html` 文件真实存在，因此返回 `403` 而不是 `404` 可以证明 URL 拦截生效。
+验收前通过命令行加入的 URL 关键字。URL 关键字检查域名、路径/子文件和查询参数，不检查网页正文；因此 `game` 会命中 `/game/index.html`。测试站中该文件真实存在，因此返回 `403` 而不是 `404` 可以证明 URL 拦截生效。
 
 ### 模块 5：请求方法过滤
 
@@ -826,6 +839,8 @@ domain_not_in_whitelist
 ```
 
 ### 模块 9：代理认证
+
+代理认证控制“谁有权使用代理”，不是目标网站登录。启用后未认证客户端收到 `407`，认证成功后才会转发请求；代理会在转发前删除 `Proxy-Authorization`，目标网站不会收到代理账号密码。
 
 停止默认代理后，重新启动：
 
@@ -1494,7 +1509,7 @@ tests\run_web_features_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 12/12
+Passed tests: 13/13
 Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log
 ```
 
@@ -1545,7 +1560,7 @@ tests\run_all_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 12/12
+Passed tests: 13/13
 PASSED batch: rule groups and runtime modes
 Passed tests: 7/7
 Web/proxy evidence isolation verified

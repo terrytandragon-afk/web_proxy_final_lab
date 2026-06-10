@@ -46,6 +46,7 @@ def main():
     text = b"".join(chunks).decode("iso-8859-1", errors="replace")
     assert "403 Forbidden" in text
     assert "domain_blacklist" in text
+    assert "<details open>" in text
     print("stage5 smoke test passed")
 
 

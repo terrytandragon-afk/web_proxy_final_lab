@@ -132,6 +132,14 @@ python tools\rule_cli.py add blocked_url_keywords game
 python tools\rule_cli.py add blocked_content_keywords forbidden
 ```
 
+浏览器访问本机测试站时，Edge/Chrome 也会默认绕过代理。请打开第三个 PowerShell，启动专用验收浏览器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
+```
+
+该脚本使用独立浏览器配置，并强制 `127.0.0.1` 请求经过 `8080`。命中规则时，浏览器中的原网页会被代理生成的 `403` 拦截页替代；点击“查看详细信息”可查看原因和命中规则。
+
 ### 步骤 2：启动代理服务和管理前端
 
 打开第二个 PowerShell：
@@ -258,8 +266,12 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 预期结果：
 
 ```text
+HTTP/1.1 403 Forbidden
 网页已被过滤
+content_keyword:forbidden
 ```
+
+也可以在专用验收浏览器中打开 `http://127.0.0.1:9000/content-test.html`，应看到代理生成的 `403` 拦截页，而不是原网页。
 
 展示说明：
 
@@ -274,6 +286,8 @@ URL 关键字：
 ```powershell
 curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
 ```
+
+这里的 URL 关键字检查请求地址中的域名、路径/子文件和查询参数，不检查网页正文。规则 `game` 会命中路径 `/game/index.html`。
 
 请求方法：
 
