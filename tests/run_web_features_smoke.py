@@ -16,6 +16,7 @@ WEB_FEATURE_TESTS = [
     "frontend_script_syntax_smoke.py",
     "manual_acceptance_workflow_smoke.py",
     "browser_proxy_launcher_smoke.py",
+    "browser_proxy_e2e_smoke.py",
 ]
 
 

@@ -113,6 +113,14 @@ Edge/Chrome 即使配置了系统代理，也会默认绕过 `localhost` 和 `12
 powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 ```
 
+如果只想先检查脚本语法、浏览器路径和待打开地址，不实际启动浏览器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1 -ValidateOnly
+```
+
+预期最后显示 `Launcher validation passed.`。
+
 命令解释：
 
 ```text
@@ -130,11 +138,13 @@ powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 在这个新浏览器窗口中验证：
 
 ```text
-http://127.0.0.1:9000/content-test.html
-http://127.0.0.1:9000/game/index.html
+http://127.0.0.1.nip.io:9000/content-test.html
+http://127.0.0.1.nip.io:9000/game/index.html
 ```
 
-两者都应显示代理生成的 `403` 拦截提示页。点击“查看详细信息”可以看到拦截原因、命中规则、请求方法和目标地址。如果仍显示原网页，并且代理终端没有新请求、管理前端总请求不增加，说明当前浏览器绕过了代理。
+启动器会自动打开这两个地址。`127.0.0.1.nip.io` 解析到本机，但不会触发 Chromium 对 `127.0.0.1` 字面地址的默认代理绕过。两者都应显示代理生成的 `403` 拦截提示页。点击“查看详细信息”可以看到拦截原因、命中规则、请求方法和目标地址。如果仍显示原网页，并且代理终端没有新请求、管理前端总请求不增加，说明当前浏览器绕过了代理。
+
+管理前端 `http://127.0.0.1:8088/` 顶部也提供“验证 URL 拦截”和“验证正文过滤”两个入口。使用已经配置为走 `8080` 代理的浏览器点击即可逐项验收。
 
 验收前准备互不冲突的规则：
 
@@ -142,6 +152,8 @@ http://127.0.0.1:9000/game/index.html
 python tools\rule_cli.py add blocked_url_keywords game
 python tools\rule_cli.py add blocked_content_keywords forbidden
 ```
+
+命令输出中的 `changed=false` 表示该规则原本已经存在，不是失败；`ok=true`、`saved=true` 表示操作和配置保存正常。
 
 使用前端或 `rule_cli.py` 修改规则会立即生效。直接编辑 `config.example.json` 后，需要重启代理或执行：
 

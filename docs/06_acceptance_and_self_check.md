@@ -138,7 +138,7 @@ python tools\rule_cli.py add blocked_content_keywords forbidden
 powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 ```
 
-该脚本使用独立浏览器配置，并强制 `127.0.0.1` 请求经过 `8080`。命中规则时，浏览器中的原网页会被代理生成的 `403` 拦截页替代；点击“查看详细信息”可查看原因和命中规则。
+该脚本使用独立浏览器配置，并自动打开 `127.0.0.1.nip.io:9000` 的 URL 与正文过滤测试页。该域名解析到本机，但不会触发 Chromium 对 `127.0.0.1` 字面地址的默认代理绕过。命中规则时，浏览器中的原网页会被代理生成的 `403` 拦截页替代；点击“查看详细信息”可查看原因和命中规则。
 
 ### 步骤 2：启动代理服务和管理前端
 
@@ -271,7 +271,7 @@ HTTP/1.1 403 Forbidden
 content_keyword:forbidden
 ```
 
-也可以在专用验收浏览器中打开 `http://127.0.0.1:9000/content-test.html`，应看到代理生成的 `403` 拦截页，而不是原网页。
+也可以在专用验收浏览器中打开 `http://127.0.0.1.nip.io:9000/content-test.html`，应看到代理生成的 `403` 拦截页，而不是原网页。
 
 展示说明：
 

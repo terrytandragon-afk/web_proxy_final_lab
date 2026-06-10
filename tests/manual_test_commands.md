@@ -25,14 +25,20 @@ PowerShell 访问本机测试站时，代理命令必须加入：
 powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 ```
 
+只检查启动器，不打开浏览器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1 -ValidateOnly
+```
+
 该窗口会强制 `127.0.0.1` 经过 `8080`。在其中访问：
 
 ```text
-http://127.0.0.1:9000/content-test.html
-http://127.0.0.1:9000/game/index.html
+http://127.0.0.1.nip.io:9000/content-test.html
+http://127.0.0.1.nip.io:9000/game/index.html
 ```
 
-预期显示代理生成的 `403` 拦截页，并可点击“查看详细信息”。若显示原网页且代理终端无新请求，说明所用浏览器窗口绕过了代理。
+启动器会自动打开这两个地址。`127.0.0.1.nip.io` 解析到本机，但不会触发 Chromium 对 `127.0.0.1` 字面地址的默认代理绕过。预期显示代理生成的 `403` 拦截页，并可点击“查看详细信息”。若显示原网页且代理终端无新请求，说明所用浏览器窗口绕过了代理。
 
 ## 1.1 快速烟测
 

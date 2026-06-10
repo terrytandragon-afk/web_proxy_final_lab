@@ -621,7 +621,15 @@ Edge/Chrome 默认绕过 `localhost` 和 `127.0.0.1`。即使 Windows 代理设�
 powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 ```
 
-该脚本启动独立 Edge/Chrome 配置，并通过 `--proxy-bypass-list=<-loopback>` 取消本机地址绕过。浏览器验收必须在这个新窗口中完成。判断浏览器是否真的经过代理：代理终端必须打印请求，管理前端“当前运行”的总请求必须增加。
+该脚本启动独立 Edge/Chrome 配置，通过 `--proxy-bypass-list=<-loopback>` 取消本机地址绕过，并自动打开 `127.0.0.1.nip.io:9000` 的 URL 与正文过滤测试页。该域名解析到本机，但不会触发 Chromium 对 `127.0.0.1` 字面地址的默认代理绕过。判断浏览器是否真的经过代理：代理终端必须打印请求，管理前端“当前运行”的总请求必须增加。
+
+启动前只验证脚本，不打开浏览器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1 -ValidateOnly
+```
+
+规则新增命令返回 `changed=false` 时，表示规则已经存在，因此没有重复写入；只要 `ok=true`、`saved=true` 就不是报错。
 
 ## 七、逐模块验收命令
 
@@ -1509,7 +1517,7 @@ tests\run_web_features_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 13/13
+Passed tests: 14/14
 Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log
 ```
 
@@ -1560,7 +1568,7 @@ tests\run_all_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 13/13
+Passed tests: 14/14
 PASSED batch: rule groups and runtime modes
 Passed tests: 7/7
 Web/proxy evidence isolation verified
