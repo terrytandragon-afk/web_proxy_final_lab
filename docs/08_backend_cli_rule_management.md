@@ -2291,6 +2291,129 @@ python tests\run_all_smoke.py
 
 `stage18_client_ip_policy_smoke.py` 会逐步验证 CIDR 标准化、黑名单拦截、黑名单修改后恢复、白名单拒绝、白名单修改后放行、非法规则拒绝、统计值和结构化日志。
 
+### 6. 现场完整手工验收：客户端黑名单
+
+这组命令使用本机地址 `127.0.0.1` 模拟被管控客户端。客户端规则只检查连接代理端口 `8080` 的来源地址，因此管理端口 `8088` 不受影响，命中黑名单后仍可通过管理 API 删除规则并恢复访问。
+
+验收前先确保本地测试 Web 服务器和代理已经启动：
+
+```powershell
+python tests\manual_demo_server.py
+python src\proxy.py --config config.example.json
+```
+
+在另一个 PowerShell 中确认当前能够正常通过代理访问：
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+预期首先看到：
+
+```text
+HTTP/1.0 200 OK
+```
+
+将本机回环网段加入客户端黑名单：
+
+```powershell
+python tools\rule_cli.py add blocked_client_ips 127.0.0.99/24
+```
+
+后端会使用 Python `ipaddress` 模块把带主机位的输入标准化为：
+
+```text
+127.0.0.0/24
+```
+
+再次发送完全相同的代理请求：
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+预期响应：
+
+```text
+HTTP/1.1 403 Forbidden
+client_ip_blacklist
+```
+
+查看本次拦截日志：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search client_ip_blacklist --limit 20
+```
+
+删除规则并恢复访问：
+
+```powershell
+python tools\rule_cli.py delete blocked_client_ips 127.0.0.0/24
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+最后一次请求应重新返回 `200 OK`。
+
+### 7. 现场完整手工验收：客户端白名单
+
+客户端白名单只在列表非空时生效。下面先加入一个不包含本机的网段，使本机客户端被拒绝，再把规则修改为本机地址并验证即时放行。
+
+加入不匹配本机的白名单：
+
+```powershell
+python tools\rule_cli.py add allowed_client_ips 10.0.0.0/8
+```
+
+通过代理访问测试页：
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+预期响应：
+
+```text
+HTTP/1.1 403 Forbidden
+client_ip_not_allowed
+```
+
+将白名单规则修改为本机地址：
+
+```powershell
+python tools\rule_cli.py update allowed_client_ips 10.0.0.0/8 127.0.0.1
+```
+
+再次访问时应立即返回 `200 OK`，无需重启代理：
+
+```powershell
+curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/
+```
+
+验收结束后清理白名单：
+
+```powershell
+python tools\rule_cli.py delete allowed_client_ips 127.0.0.1
+```
+
+同时查询黑名单和白名单拒绝记录：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search client_ip_ --limit 50
+```
+
+前端展示方式：打开 `http://127.0.0.1:8088/`，首页“客户端拦截”统计会增加；点击该统计项即可进入日志详情页，并查看 `client_ip_blacklist` 与 `client_ip_not_allowed` 两种拒绝原因。
+
+### 8. 客户端 IP 验收命令参数解释
+
+- `--noproxy no-host-bypass.invalid`：把一个不会命中的主机名设为绕过对象，避免 Windows 对本机地址自动绕过代理。
+- `-x http://127.0.0.1:8080`：明确要求本次请求经过项目代理。
+- `add blocked_client_ips 127.0.0.99/24`：新增客户端黑名单，并演示 CIDR 标准化。
+- `add allowed_client_ips 10.0.0.0/8`：建立非空白名单；未命中的客户端会被拒绝。
+- `update allowed_client_ips 10.0.0.0/8 127.0.0.1`：运行期间修改白名单，立即允许本机客户端。
+- `--kind blocked`：查询拦截日志文件。
+- `--event BLOCK`：只保留由访问策略直接拒绝的事件。
+- `--search client_ip_`：同时匹配两类客户端 IP 拒绝原因。
+
 ## 十四、后续可继续完善的模块
 
 按照课程展示价值和实现风险，建议后续优先级如下：

@@ -4,6 +4,8 @@
 
 本项目是一个完整的课程实验项目，包含代理服务、规则过滤、规则增删改查管理、日志审计、统计展示、管理前端、HTTPS CONNECT 隧道和 HTTP 缓存等模块。
 
+最终展示时建议先阅读项目根目录的 `PROJECT_SHOWCASE.md`。该文件集中说明题目完成情况、系统架构、已实现功能、核心技术、测试覆盖和主要入口。正式期末实验报告位于 `report/final_report.tex` 和 `report/final_report.pdf`。
+
 ## 一、系统总体架构
 
 ```text

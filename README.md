@@ -4,6 +4,27 @@
 
 本项目用于“计算机安全与保密”课程期末实验。目标是逐步实现一个 Web 代理服务器，而不是一次性复制完整代码。
 
+## 最终展示入口
+
+项目功能、系统架构、实现技术、验收入口和重要边界汇总在：
+
+```text
+PROJECT_SHOWCASE.md
+```
+
+课程期末实验报告及其 LaTeX 源文件位于：
+
+```text
+report/final_report.pdf
+report/final_report.tex
+```
+
+现场逐模块验收命令、参数解释和预期结果位于：
+
+```text
+docs/08_backend_cli_rule_management.md
+```
+
 ## 课程最低要求
 
 1. 能够接收客户端的 Web 访问请求。

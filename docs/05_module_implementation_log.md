@@ -1732,3 +1732,29 @@ python tests\stage7_policy_smoke.py
 python tests\stage8_admin_smoke.py
 python tests\run_all_smoke.py
 ```
+
+## 阶段 29：项目最终展示整理与期末实验报告
+
+### 实现内容
+
+- 新增根目录 `PROJECT_SHOWCASE.md`，集中展示题目要求完成情况、系统架构、全部功能、实现技术、运行方式、测试覆盖和主要文件入口。
+- 在 README 和项目总览中增加最终展示入口，使验收人员能够快速定位展示总览、逐模块验收文档和期末报告。
+- 完善客户端 IP/CIDR 黑名单与白名单手工验收指导，加入正常访问、规则新增、拒绝结果、日志查询、规则热更新恢复和验收清理步骤。
+- 新增 `report/final_report.tex`，按照需求分析、总体设计、详细实现、测试验收、安全边界和总结的课程报告结构说明整个项目。
+- 使用 XeLaTeX 生成 `report/final_report.pdf`，报告包含系统架构图、请求处理流程图、测试结果表和常用命令附录。
+- 再次单独运行客户端 IP/CIDR 实测，并执行完整回归测试，确认展示文档与当前代码行为一致。
+
+### 验证与生成命令
+
+```powershell
+python tests\stage18_client_ip_policy_smoke.py
+python tests\run_all_smoke.py
+cd report
+latexmk -xelatex -interaction=nonstopmode final_report.tex
+```
+
+命令含义：
+
+- `stage18_client_ip_policy_smoke.py`：实际验证客户端黑名单拒绝、白名单拒绝、规则热更新恢复、统计和日志。
+- `run_all_smoke.py`：运行全部 Web/代理功能与规则/运行模式回归。
+- `latexmk -xelatex`：使用 XeLaTeX 自动完成中文报告所需的多轮编译，并生成最终 PDF。
