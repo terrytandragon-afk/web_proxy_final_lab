@@ -111,8 +111,9 @@ def main():
             if group["type"] == "blocked_content_keywords"
         )
         assert "路径/子文件" in url_group["description"]
-        assert "不检查网页正文" in url_group["description"]
+        assert "HTTPS 只能检查 CONNECT 目标域名" in url_group["description"]
         assert "403" in content_group["description"]
+        assert "不解密 HTTPS 正文" in content_group["description"]
 
         status, body = post_json(
             "/api/rules/add",

@@ -688,6 +688,8 @@ blocked.test
 
 ### 模块 3：网页正文关键字过滤
 
+正文过滤只适用于代理能够读取返回正文的 **明文 HTTP** 页面。对于 HTTPS，浏览器先发送 `CONNECT 域名:443`，之后请求路径、响应头和网页正文都位于 TLS 加密隧道中，本项目不会解密，所以正文规则无法命中 HTTPS 页面。
+
 ```powershell
 curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/content-test.html
 ```
@@ -709,7 +711,67 @@ content-test.html
 
 测试页面正文包含 `forbidden`，但 URL 不包含该词，因此可以明确验证正文过滤，而不会先命中 URL 过滤。
 
+#### 使用真实公网网站在 Edge 验收正文过滤
+
+推荐网站：
+
+```text
+http://neverssl.com/
+```
+
+`NeverSSL` 是专门保留明文 HTTP 的真实公网网站，首页正文包含 `NeverSSL`。验收时必须输入完整的 `http://` 地址，不要改成 `https://`。
+
+准备运行状态和规则：
+
+```powershell
+python tools\rule_cli.py set mode blacklist
+python tools\rule_cli.py set proxy_auth_enabled false
+python tools\rule_cli.py set rate_limit_enabled false
+python tools\rule_cli.py delete blocked_domains neverssl.com
+python tools\rule_cli.py delete blocked_url_keywords neverssl
+python tools\rule_cli.py add blocked_content_keywords NeverSSL
+```
+
+命令含义：
+
+- 关闭代理认证和限流，防止它们在正文过滤前抢先拦截。
+- 删除可能存在的域名和 URL 规则，确保本次命中只能来自正文规则。
+- 新增正文关键字 `NeverSSL`；正文匹配不区分大小写。
+- 删除不存在的规则返回 `changed=false` 属于正常结果。
+
+在已经配置使用 `127.0.0.1:8080` 代理的 Edge 中打开：
+
+```text
+http://neverssl.com/
+```
+
+预期浏览器显示代理生成的 `403` 页面，详细信息包含：
+
+```text
+content_keyword:NeverSSL
+```
+
+后端验证：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event FILTER --search neverssl.com --limit 20
+```
+
+预期日志包含：
+
+```text
+FILTER host=neverssl.com keyword=NeverSSL
+```
+
+验收后删除演示规则：
+
+```powershell
+python tools\rule_cli.py delete blocked_content_keywords NeverSSL
+```
+
 ### 模块 4：URL 关键字拦截
+
+URL 关键字对明文 HTTP 可以检查域名、路径和查询参数；对 HTTPS 只能检查浏览器在建立隧道时暴露的目标域名，不能检查加密隧道内部的路径。
 
 ```powershell
 curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127.0.0.1:9000/game/index.html
@@ -729,6 +791,81 @@ game
 ```
 
 验收前通过命令行加入的 URL 关键字。URL 关键字检查域名、路径/子文件和查询参数，不检查网页正文；因此 `game` 会命中 `/game/index.html`。测试站中该文件真实存在，因此返回 `403` 而不是 `404` 可以证明 URL 拦截生效。
+
+#### 为什么百度百科 HTTPS 地址不能用 `item` 拦截
+
+访问：
+
+```text
+https://baike.baidu.com/item/Microsoft%20Bing/53947180
+```
+
+代理实际只能在 TLS 建立前看到：
+
+```text
+CONNECT baike.baidu.com:443
+```
+
+`/item/Microsoft%20Bing/53947180` 和返回正文都已加密，因此：
+
+- URL 规则 `item` 或 `Microsoft` 不会命中。
+- 正文规则 `Microsoft` 也不会命中。
+- 域名规则 `baike.baidu.com` 或 `*.baidu.com` 可以命中，因为 CONNECT 目标域名可见。
+- `mocrosoft` 还存在拼写错误，但即使改成 `Microsoft`，当前普通 CONNECT 代理仍看不到 HTTPS 路径和正文。
+
+这不是“请求还是返回”的先后问题，而是 HTTPS 加密可见性边界。若要检查 HTTPS 路径或正文，需要实现 MITM、生成并让客户端信任实验 CA 证书，不属于当前项目基础实现。
+
+#### 使用真实公网网站在 Edge 验收 URL 路径过滤
+
+推荐地址：
+
+```text
+http://httpforever.com/url-filter-demo
+```
+
+`HTTP Forever` 是保留明文 HTTP 的真实公网网站。URL 规则在代理连接目标网站之前执行，因此只要 Edge 确实通过代理发送该 HTTP 地址，`url-filter-demo` 就会稳定命中，不依赖目标路径最终返回 200 还是 404。
+
+准备运行状态和规则：
+
+```powershell
+python tools\rule_cli.py set mode blacklist
+python tools\rule_cli.py set proxy_auth_enabled false
+python tools\rule_cli.py set rate_limit_enabled false
+python tools\rule_cli.py delete blocked_domains httpforever.com
+python tools\rule_cli.py add blocked_url_keywords url-filter-demo
+```
+
+在已经配置使用 `127.0.0.1:8080` 代理的 Edge 中打开：
+
+```text
+http://httpforever.com/url-filter-demo
+```
+
+预期浏览器显示代理生成的 `403` 页面，详细信息包含：
+
+```text
+url_keyword:url-filter-demo
+```
+
+后端验证：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search url_keyword:url-filter-demo --limit 20
+```
+
+预期日志包含：
+
+```text
+BLOCK host=httpforever.com path=/url-filter-demo reason=url_keyword:url-filter-demo
+```
+
+验收后删除演示规则：
+
+```powershell
+python tools\rule_cli.py delete blocked_url_keywords url-filter-demo
+```
+
+如果 Edge 自动把地址升级为 `https://`，请确认地址栏手动输入的是完整 `http://` 地址，并关闭 Edge 的“自动切换到更安全的连接”后再验收。公网网站的可用状态可能变化；现场最稳定、完全不依赖公网的验收仍是本项目的 `manual_demo_server.py`。
 
 ### 模块 5：请求方法过滤
 
@@ -1517,7 +1654,7 @@ tests\run_web_features_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 14/14
+Passed tests: 15/15
 Web evidence: tests/evidence/web/proxy.log and tests/evidence/web/blocked.log
 ```
 
@@ -1568,7 +1705,7 @@ tests\run_all_smoke.py
 
 ```text
 PASSED batch: web/proxy features
-Passed tests: 14/14
+Passed tests: 15/15
 PASSED batch: rule groups and runtime modes
 Passed tests: 7/7
 Web/proxy evidence isolation verified

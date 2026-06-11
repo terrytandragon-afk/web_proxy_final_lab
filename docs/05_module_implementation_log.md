@@ -1711,3 +1711,24 @@ python tests\run_all_smoke.py
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 ```
+
+## 阶段 28：公网 HTTP URL 与正文过滤验收边界
+
+### 实现内容
+
+- 明确记录 HTTPS CONNECT 可见性边界：普通代理只能看到目标域名和端口，看不到 TLS 内部路径和正文。
+- 管理前端规则说明明确 URL 路径过滤和正文过滤只适用于明文 HTTP；HTTPS 只支持目标域名策略。
+- 第 8 号验收文档新增两个真实公网 HTTP 示例：
+  - `http://httpforever.com/url-filter-demo` 验证 URL 路径规则。
+  - `http://neverssl.com/` 验证返回正文规则。
+- 新增 `public_http_filter_examples_smoke.py`，验证文档中的公网示例规则与项目实现保持一致。
+- `stage7_policy_smoke.py` 增加 HTTP 完整路径可见、HTTPS CONNECT 内部路径不可见的边界测试。
+
+### 验证命令
+
+```powershell
+python tests\public_http_filter_examples_smoke.py
+python tests\stage7_policy_smoke.py
+python tests\stage8_admin_smoke.py
+python tests\run_all_smoke.py
+```

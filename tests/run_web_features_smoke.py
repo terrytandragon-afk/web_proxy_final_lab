@@ -17,6 +17,7 @@ WEB_FEATURE_TESTS = [
     "manual_acceptance_workflow_smoke.py",
     "browser_proxy_launcher_smoke.py",
     "browser_proxy_e2e_smoke.py",
+    "public_http_filter_examples_smoke.py",
 ]
 
 

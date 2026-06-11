@@ -29,12 +29,12 @@ LIST_RULE_FIELDS = {
     },
     "blocked_url_keywords": {
         "title": "URL 关键字",
-        "description": "请求地址中的域名、路径/子文件或查询参数包含该关键字时直接拦截；不检查网页正文。",
+        "description": "明文 HTTP 请求地址中的域名、路径/子文件或查询参数包含该关键字时直接拦截；HTTPS 只能检查 CONNECT 目标域名。",
         "value_label": "URL 关键字",
     },
     "blocked_content_keywords": {
         "title": "正文关键字",
-        "description": "HTTP 明文网页正文包含该关键字时，以 403 拦截提示页替代原网页。",
+        "description": "HTTP 明文网页正文包含该关键字时，以 403 拦截提示页替代原网页；不解密 HTTPS 正文。",
         "value_label": "正文关键字",
     },
     "blocked_methods": {

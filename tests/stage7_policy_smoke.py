@@ -26,6 +26,29 @@ def request_through_proxy(raw_request):
 
 
 def main():
+    # A normal HTTP proxy sees the complete HTTP path, but an HTTPS CONNECT
+    # request exposes only the target host and port before the TLS tunnel starts.
+    http_request = {
+        "method": "GET",
+        "host": "baike.baidu.com",
+        "path": "/item/Microsoft%20Bing/53947180",
+        "target": "http://baike.baidu.com/item/Microsoft%20Bing/53947180",
+    }
+    connect_request = {
+        "method": "CONNECT",
+        "host": "baike.baidu.com",
+        "path": "baike.baidu.com:443",
+        "target": "baike.baidu.com:443",
+    }
+    assert proxy.check_access_policy(
+        http_request,
+        {"mode": "blacklist", "blocked_url_keywords": ["item"]},
+    ) == (False, "url_keyword:item")
+    assert proxy.check_access_policy(
+        connect_request,
+        {"mode": "blacklist", "blocked_url_keywords": ["item", "Microsoft"]},
+    ) == (True, "allow")
+
     config = {
         "mode": "blacklist",
         "blocked_domains": [],
