@@ -53,6 +53,7 @@ def parse_args():
     auth_delete_parser.add_argument("username", help="Proxy auth username to delete")
 
     subparsers.add_parser("rate-reset", help="Clear current rate-limit counters")
+    subparsers.add_parser("cache-clear", help="Clear current HTTP response cache")
 
     logs_parser = subparsers.add_parser("logs", help="Read logs from admin API")
     logs_parser.add_argument("--kind", choices=["proxy", "blocked", "error"], default="proxy")
@@ -82,6 +83,9 @@ def parse_args():
     log_export_parser.add_argument("--output", required=True, help="CSV output file path")
 
     changes_parser = subparsers.add_parser("changes", help="Read rule/settings change history")
+    changes_parser.add_argument("--action", default="", help="Filter by add/update/delete/replace/settings")
+    changes_parser.add_argument("--rule-type", default="", help="Filter by one rule group")
+    changes_parser.add_argument("--search", default="", help="Case-insensitive full-record search")
     changes_parser.add_argument("--limit", type=int, default=20)
 
     return parser.parse_args()
@@ -216,6 +220,8 @@ def main():
         )
     elif args.command == "rate-reset":
         result = request_json(args, "POST", "/api/rate/reset")
+    elif args.command == "cache-clear":
+        result = request_json(args, "POST", "/api/cache/clear")
     elif args.command == "logs":
         query = urlencode({"kind": args.kind, "limit": args.limit})
         result = request_json(args, "GET", f"/api/logs?{query}")
@@ -244,8 +250,15 @@ def main():
         output_path.write_bytes(csv_bytes)
         result = {"ok": True, "output": str(output_path), "bytes": len(csv_bytes)}
     elif args.command == "changes":
-        query = urlencode({"limit": args.limit})
-        result = request_json(args, "GET", f"/api/changes?{query}")
+        query = urlencode(
+            {
+                "action": args.action,
+                "rule_type": args.rule_type,
+                "search": args.search,
+                "limit": args.limit,
+            }
+        )
+        result = request_json(args, "GET", f"/api/changes/query?{query}")
     else:
         raise SystemExit(f"unsupported command: {args.command}")
 

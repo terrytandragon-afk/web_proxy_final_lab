@@ -204,6 +204,15 @@ def main():
         assert any(item["action"] == "add" for item in payload["changes"])
         assert any(item["action"] == "settings" for item in payload["changes"])
 
+        status, body = get(
+            "/api/changes/query?action=add&rule_type=blocked_content_keywords&limit=20"
+        )
+        assert status == 200
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["profile"] == "current"
+        assert payload["matched"] >= 1
+        assert payload["entries"][0]["rule_type"] == "blocked_content_keywords"
+
         status, body = get("/api/stats")
         assert status == 200
         payload = json.loads(body.decode("utf-8"))
@@ -248,6 +257,7 @@ def main():
         assert b"/api/evidence/profiles" in body
         assert b"/api/evidence/dashboard" in body
         assert b"/logs.html?profile=web" in body
+        assert b"/changes.html?profile=current" in body
         assert b"/changes.html?profile=rules" in body
         assert b"http://127.0.0.1.nip.io:9000/game/index.html" in body
         assert b"http://127.0.0.1.nip.io:9000/content-test.html" in body
@@ -266,7 +276,10 @@ def main():
 
         status, body = get("/changes.html")
         assert status == 200
+        assert b"/api/changes/query" in body
         assert b"/api/evidence/changes/query" in body
+        assert "当前运行".encode("utf-8") in body
+        assert "批量验收".encode("utf-8") in body
 
         status, body = get("/api/evidence/profiles")
         assert status == 200

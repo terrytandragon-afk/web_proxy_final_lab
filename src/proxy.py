@@ -39,7 +39,7 @@ try:
         query_change_entries,
     )
 except ImportError:
-    # Running `python src/proxy.py` adds `src` rather than the project root to sys.path.
+    # 直接运行 `python src/proxy.py` 时，Python 会把 src 而非项目根目录加入模块路径。
     from webproxy.audit import (
         build_log_csv,
         clear_log_files,
@@ -103,11 +103,11 @@ class RuntimeState:
         self.keyword_hits = {}
         self.cache = {}
         self.rate_limits = {}
-        # Persisted JSONL history lets the frontend show CLI/API changes after a restart.
+        # JSONL 持久化历史使前端在代理重启后仍能显示 CLI/API 变更。
         self.change_history = self._load_change_history()
 
     def _load_change_history(self):
-        """Load the newest persisted rule/settings changes for the admin frontend."""
+        """加载最近的规则和运行设置变更，供管理前端回显。"""
         path_text = self.config.get("change_log_file")
         if not path_text:
             return []
@@ -126,7 +126,7 @@ class RuntimeState:
         return list(reversed(entries))
 
     def _append_change_history_locked(self, entry):
-        """Append one JSONL change record. Caller must already hold self.lock."""
+        """追加一条 JSONL 变更记录，调用方必须已经持有 self.lock。"""
         path_text = self.config.get("change_log_file")
         if not path_text:
             return
@@ -145,7 +145,11 @@ class RuntimeState:
             return self.get_config()
         config = load_config(self.config_path)
         with self.lock:
+            old_content_rules = list(self.config.get("blocked_content_keywords", []))
             self.config = config
+            if old_content_rules != list(config.get("blocked_content_keywords", [])):
+                # 缓存保存的是上游原始响应；正文规则变化后不能继续直接复用旧结果。
+                self.cache.clear()
         return config
 
     def _save_config_locked(self):
@@ -165,26 +169,81 @@ class RuntimeState:
             return build_rules_payload(self.config)
 
     def get_change_history(self, limit=80):
-        """Return rule/settings changes so API/CLI edits can be shown by the web UI."""
+        """返回最近变更，使 API/CLI 修改能够在管理前端回显。"""
         with self.lock:
             limit = max(1, min(int(limit), 200))
             return [dict(item) for item in self.change_history[:limit]]
 
+    def query_changes(self, action="", rule_type="", search="", limit=200):
+        """查询当前运行期间的变更历史，供规则变更总览页面筛选展示。"""
+        normalized_action = str(action or "").strip().lower()
+        normalized_rule_type = str(rule_type or "").strip()
+        search_lower = str(search or "").strip().lower()
+        bounded_limit = max(1, min(int(limit), 1000))
+        with self.lock:
+            entries = [dict(item) for item in self.change_history]
+
+        action_counts = {}
+        rule_type_counts = {}
+        matched_entries = []
+        for entry in entries:
+            entry_action = str(entry.get("action", "unknown"))
+            entry_rule_type = str(entry.get("rule_type", "settings"))
+            action_counts[entry_action] = action_counts.get(entry_action, 0) + 1
+            rule_type_counts[entry_rule_type] = rule_type_counts.get(entry_rule_type, 0) + 1
+            if normalized_action and entry_action != normalized_action:
+                continue
+            if normalized_rule_type and entry_rule_type != normalized_rule_type:
+                continue
+            if search_lower:
+                serialized = json.dumps(entry, ensure_ascii=False).lower()
+                if search_lower not in serialized:
+                    continue
+            matched_entries.append(entry)
+
+        return {
+            "profile": "current",
+            "action": normalized_action,
+            "rule_type": normalized_rule_type,
+            "search": search,
+            "total": len(entries),
+            "matched": len(matched_entries),
+            "action_counts": action_counts,
+            "rule_type_counts": rule_type_counts,
+            "entries": matched_entries[:bounded_limit],
+        }
+
     def _record_change_locked(self, action, result):
-        """Store one admin change entry. Caller must already hold self.lock."""
+        """保存一条管理操作记录，调用方必须已经持有 self.lock。"""
         entry = {
             "time": datetime.now().isoformat(timespec="seconds"),
             "action": action,
             "changed": bool(result.get("changed", False)),
             "saved": bool(result.get("saved", False)),
         }
-        for key in ("rule_type", "value", "old_value", "new_value", "values", "settings"):
+        for key in (
+            "rule_type",
+            "value",
+            "old_value",
+            "new_value",
+            "values",
+            "settings",
+            "cache_cleared",
+        ):
             if key in result:
                 entry[key] = result[key]
         self.change_history.insert(0, entry)
         self.change_history = self.change_history[:100]
         self._append_change_history_locked(entry)
         return entry
+
+    def _clear_cache_for_rule_change_locked(self, rule_type, changed):
+        """正文过滤规则变化后清空旧响应缓存，调用方必须持有 self.lock。"""
+        if changed and rule_type == "blocked_content_keywords":
+            cleared = len(self.cache)
+            self.cache.clear()
+            return cleared
+        return 0
 
     def add_list_rule(self, rule_type, value):
         """向指定规则列表新增一条规则，并立即保存到配置文件。"""
@@ -211,6 +270,7 @@ class RuntimeState:
                 "rule_type": rule_type,
                 "value": normalized,
                 "values": list(self.config.get(rule_type, [])),
+                "cache_cleared": self._clear_cache_for_rule_change_locked(rule_type, changed),
             }
             result["history_entry"] = self._record_change_locked("add", result)
             return result
@@ -236,6 +296,7 @@ class RuntimeState:
                 "rule_type": rule_type,
                 "value": normalize_rule_value(rule_type, value),
                 "values": list(new_values),
+                "cache_cleared": self._clear_cache_for_rule_change_locked(rule_type, changed),
             }
             result["history_entry"] = self._record_change_locked("delete", result)
             return result
@@ -278,6 +339,7 @@ class RuntimeState:
                 "old_value": normalize_rule_value(rule_type, old_value),
                 "new_value": normalized_new,
                 "values": list(new_values),
+                "cache_cleared": self._clear_cache_for_rule_change_locked(rule_type, changed),
             }
             result["history_entry"] = self._record_change_locked("update", result)
             return result
@@ -309,6 +371,7 @@ class RuntimeState:
                 "saved": saved,
                 "rule_type": rule_type,
                 "values": list(normalized_values),
+                "cache_cleared": self._clear_cache_for_rule_change_locked(rule_type, changed),
             }
             result["history_entry"] = self._record_change_locked("replace", result)
             return result
@@ -356,14 +419,23 @@ class RuntimeState:
 
         with self.lock:
             changed = any(self.config.get(key) != value for key, value in normalized_updates.items())
+            cache_setting_changed = changed and any(
+                key in {"cache_enabled", "cache_ttl_seconds", "cache_max_items"}
+                for key in normalized_updates
+            )
             self.config.update(normalized_updates)
             if any(key.startswith("rate_limit_") for key in normalized_updates):
                 self.rate_limits.clear()
+            cache_cleared = len(self.cache) if cache_setting_changed else 0
+            if cache_setting_changed:
+                # 缓存参数改变后清空旧条目，防止继续使用旧 TTL 或旧启用状态的数据。
+                self.cache.clear()
             saved = self._save_config_locked()
             result = {
                 "ok": True,
                 "changed": changed,
                 "saved": saved,
+                "cache_cleared": cache_cleared,
                 "settings": {
                     key: self.config.get(key)
                     for key in CONFIG_SETTING_FIELDS
@@ -397,7 +469,7 @@ class RuntimeState:
 
     def set_cache(self, key, response_bytes, status_code, ttl_seconds, max_items):
         """写入 HTTP GET 缓存，并在超过最大条目数时删除最早的缓存。"""
-        if ttl_seconds <= 0:
+        if ttl_seconds <= 0 or max_items <= 0:
             return
         with self.lock:
             while max_items > 0 and len(self.cache) >= max_items:
@@ -447,7 +519,7 @@ class RuntimeState:
             return count
 
     def clear_change_history(self):
-        """Clear in-memory and persisted rule/settings change history."""
+        """清空内存与 JSONL 文件中的规则和运行设置变更历史。"""
         with self.lock:
             count = len(self.change_history)
             self.change_history.clear()
@@ -530,7 +602,7 @@ def find_header(headers, name):
 
 
 def parse_bounded_query_int(query, name, default, maximum):
-    """Read one integer URL query parameter without allowing invalid or huge values."""
+    """读取整数查询参数，并限制异常值和过大结果集。"""
     try:
         value = int(query.get(name, [str(default)])[0])
     except (TypeError, ValueError):
@@ -720,7 +792,7 @@ def domain_matches(host, patterns):
 
 
 def client_ip_matches(client_ip, patterns):
-    """Match a client address against normalized single-IP and CIDR rules."""
+    """判断客户端地址是否命中单个 IP 或 CIDR 网段规则。"""
     try:
         address = ipaddress.ip_address(client_ip)
     except ValueError:
@@ -736,13 +808,13 @@ def client_ip_matches(client_ip, patterns):
             if address in ipaddress.ip_network(pattern, strict=False):
                 return True
         except ValueError:
-            # A manually edited invalid configuration entry is ignored safely.
+            # 手工修改配置时出现的非法条目会被安全忽略。
             continue
     return False
 
 
 def check_client_access_policy(client_ip, config):
-    """Apply client allow/deny lists before authentication and target filtering."""
+    """在认证和目标过滤前执行客户端 IP 黑白名单策略。"""
     blocked_clients = config.get("blocked_client_ips", [])
     if client_ip_matches(client_ip, blocked_clients):
         return False, "client_ip_blacklist"
@@ -836,6 +908,52 @@ def parse_status_code(response_bytes):
     return 0
 
 
+def decode_chunked_body(body):
+    """解析 HTTP chunked 正文，仅用于关键词检查；解析失败时保留原始正文。"""
+    chunks = []
+    position = 0
+    try:
+        while True:
+            line_end = body.find(b"\r\n", position)
+            if line_end < 0:
+                return body
+            size_text = body[position:line_end].split(b";", 1)[0].strip()
+            size = int(size_text, 16)
+            position = line_end + 2
+            if size == 0:
+                return b"".join(chunks)
+            chunk_end = position + size
+            if chunk_end + 2 > len(body) or body[chunk_end:chunk_end + 2] != b"\r\n":
+                return body
+            chunks.append(body[position:chunk_end])
+            position = chunk_end + 2
+    except ValueError:
+        return body
+
+
+def decode_text_body(body, content_type):
+    """按响应声明字符集解码正文，并兼容常见 UTF-8、GB18030 页面。"""
+    declared_charset = ""
+    for parameter in content_type.split(";")[1:]:
+        name, separator, value = parameter.partition("=")
+        if separator and name.strip().lower() == "charset":
+            declared_charset = value.strip().strip("\"'")
+            break
+
+    encodings = [declared_charset, "utf-8", "gb18030", "iso-8859-1"]
+    tried = set()
+    for encoding in encodings:
+        normalized = encoding.lower()
+        if not normalized or normalized in tried:
+            continue
+        tried.add(normalized)
+        try:
+            return body.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return body.decode("utf-8", errors="replace")
+
+
 def filter_response_content(response_bytes, config, request_info=None, client_ip=""):
     """对 HTTP 明文文本响应做正文关键字过滤，二进制或压缩内容直接放行。"""
     if b"\r\n\r\n" not in response_bytes:
@@ -847,6 +965,7 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
 
     content_type = response_header_value(header_lines, "Content-Type")
     content_encoding = response_header_value(header_lines, "Content-Encoding")
+    transfer_encoding = response_header_value(header_lines, "Transfer-Encoding")
 
     if content_encoding and content_encoding.lower() not in ("identity", "none"):
         return response_bytes, None
@@ -854,7 +973,8 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
     if not is_text_content_type(content_type):
         return response_bytes, None
 
-    body_text = body.decode("utf-8", errors="replace")
+    inspection_body = decode_chunked_body(body) if "chunked" in transfer_encoding.lower() else body
+    body_text = decode_text_body(inspection_body, content_type)
     body_text_lower = body_text.lower()
 
     for keyword in config.get("blocked_content_keywords", []):
@@ -896,7 +1016,7 @@ def build_upstream_request(request_text, request_info):
         "host",
         "connection",
         "proxy-connection",
-        # Proxy credentials are only for this proxy and must never reach a website.
+        # 代理认证凭据只能由本代理读取，不能转发给目标网站。
         "proxy-authorization",
         "proxy-authenticate",
         "accept-encoding",
@@ -1102,8 +1222,7 @@ def handle_client(client_socket, client_address, state):
         )
         print("=" * 60, flush=True)
 
-        # Client network policy runs before authentication and rate limiting so a
-        # denied machine cannot consume credentials or rate-limit capacity.
+        # 客户端地址策略先于认证和限流执行，拒绝的主机不会消耗认证与限流资源。
         client_allowed, client_reason = check_client_access_policy(client_address[0], config)
         if not client_allowed:
             update_block_stats(state, client_reason)
@@ -1133,8 +1252,7 @@ def handle_client(client_socket, client_address, state):
             )
             return
 
-        # Count authenticated proxy requests. This keeps a 407 authentication challenge
-        # from consuming the only permitted request when the limit is set to one.
+        # 仅对通过认证的请求计数，避免 407 认证挑战消耗限流额度。
         rate_config_enabled = config.get("rate_limit_enabled", False)
         if rate_config_enabled:
             max_requests = int(config.get("rate_limit_per_minute", 60))
@@ -1191,12 +1309,37 @@ def handle_client(client_socket, client_address, state):
             cache_key = build_cache_key(request_info)
             cached = state.get_cache(cache_key)
             if cached:
-                response_bytes = cached["response_bytes"]
+                # 缓存中保存的是上游原始响应。每次命中仍需按当前正文规则检查，
+                # 否则先访问页面、再新增正文规则时，浏览器会一直拿到旧缓存页面。
+                response_bytes, blocked_keyword = filter_response_content(
+                    cached["response_bytes"],
+                    config,
+                    request_info,
+                    client_address[0],
+                )
                 client_socket.sendall(response_bytes)
                 bytes_sent = len(response_bytes)
                 state.increment("cache_hits")
-                state.increment("allowed_requests")
                 state.increment("bytes_to_clients", bytes_sent)
+                if blocked_keyword:
+                    state.increment("filtered_keyword")
+                    state.record_keyword(blocked_keyword)
+                    log_event(
+                        state,
+                        "CACHE_HIT_FILTERED",
+                        f"client={client_address[0]} method={request_info['method']} "
+                        f"host={request_info['host']} path={request_info['path']} "
+                        f"keyword={blocked_keyword}",
+                    )
+                    log_event(
+                        state,
+                        "FILTER",
+                        f"client={client_address[0]} method={request_info['method']} "
+                        f"host={request_info['host']} path={request_info['path']} "
+                        f"keyword={blocked_keyword}",
+                    )
+                    return
+                state.increment("allowed_requests")
                 log_event(
                     state,
                     "CACHE_HIT",
@@ -1308,6 +1451,14 @@ class AdminHandler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             limit = parse_bounded_query_int(query, "limit", 80, 200)
             self.send_json({"changes": self.state.get_change_history(limit)})
+            return
+        if parsed.path == "/api/changes/query":
+            query = parse_qs(parsed.query)
+            action = query.get("action", [""])[0]
+            rule_type = query.get("rule_type", [""])[0]
+            search = query.get("search", [""])[0]
+            limit = parse_bounded_query_int(query, "limit", 200, 1000)
+            self.send_json(self.state.query_changes(action, rule_type, search, limit))
             return
         if parsed.path == "/api/stats":
             self.send_json(self.state.snapshot())
@@ -1459,7 +1610,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": str(error)}, status_code=400)
 
     def send_frontend(self, page_path=FRONTEND_INDEX):
-        """Serve one trusted static administration page from the project frontend."""
+        """从固定前端目录发送可信管理页面。"""
         if not page_path.exists():
             self.send_error(404, f"{page_path.name} not found")
             return
@@ -1499,7 +1650,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.send_bytes(body, "application/json; charset=utf-8", status_code=status_code)
 
     def send_bytes(self, body, content_type, status_code=200, filename=""):
-        """Send a byte response; filename enables browser downloads for exported evidence."""
+        """发送字节响应；提供文件名时触发浏览器下载验收证据。"""
         self.send_response(status_code)
         self.send_header("Content-Type", content_type)
         if filename:

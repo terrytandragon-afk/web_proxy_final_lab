@@ -272,5 +272,5 @@ python tests\run_all_smoke.py
 ```text
 stage8 admin smoke test passed
 stage16 rule cli smoke test passed
-all smoke tests passed
+all test batches passed
 ```

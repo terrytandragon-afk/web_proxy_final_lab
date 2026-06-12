@@ -487,7 +487,7 @@ python tests\run_all_smoke.py
 预期结果：
 
 ```text
-all smoke tests passed
+all test batches passed
 ```
 
 ## 三、已实现模块清单

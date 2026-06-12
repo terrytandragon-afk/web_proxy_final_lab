@@ -92,9 +92,15 @@ def list_evidence_profiles():
     return results
 
 
-def query_change_entries(profile_name, action="", rule_type="", search="", limit=200):
-    """Query persisted rule/settings changes like a small read-only database."""
-    config = load_evidence_config(profile_name)
+def query_change_entries_from_config(
+    config,
+    profile_name="current",
+    action="",
+    rule_type="",
+    search="",
+    limit=200,
+):
+    """Query one configured JSONL change log like a small read-only database."""
     change_path = _config_path(config, "change_log_file")
     entries = _read_jsonl(change_path)
     normalized_action = str(action or "").strip().lower()
@@ -133,6 +139,18 @@ def query_change_entries(profile_name, action="", rule_type="", search="", limit
         # Persisted files are chronological; detail pages show newest records first.
         "entries": list(reversed(matched_entries[-bounded_limit:])),
     }
+
+
+def query_change_entries(profile_name, action="", rule_type="", search="", limit=200):
+    """Query persisted acceptance changes from one fixed evidence profile."""
+    return query_change_entries_from_config(
+        load_evidence_config(profile_name),
+        profile_name=profile_name,
+        action=action,
+        rule_type=rule_type,
+        search=search,
+        limit=limit,
+    )
 
 
 def build_evidence_dashboard():
@@ -217,7 +235,7 @@ def build_evidence_dashboard():
                 keyword_hits[keyword] += 1
         elif event == "CONNECT":
             stats["https_tunnels"] += 1
-        elif event == "CACHE_HIT":
+        elif event in {"CACHE_HIT", "CACHE_HIT_FILTERED"}:
             stats["cache_hits"] += 1
         elif event == "CACHE_MISS":
             stats["cache_misses"] += 1

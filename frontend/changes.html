@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>规则变更证据 - Web Proxy Admin</title>
+  <title>规则变更总览 - Web Proxy Admin</title>
   <style>
     :root { --bg:#f5f7fa; --panel:#fff; --line:#d8dee8; --text:#1f2933; --muted:#667085; --accent:#0f766e; --danger:#b42318; }
     * { box-sizing: border-box; }
@@ -16,7 +16,7 @@
     a.back, button { min-height:34px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); padding:7px 12px; cursor:pointer; text-decoration:none; white-space:nowrap; }
     button.primary { border-color:var(--accent); background:var(--accent); color:#fff; }
     main { padding-top:20px; padding-bottom:32px; }
-    .querybar { display:grid; grid-template-columns:160px 220px minmax(220px,1fr) 110px auto; gap:10px; align-items:end; padding-bottom:18px; }
+    .querybar { display:grid; grid-template-columns:160px 160px 220px minmax(220px,1fr) 110px auto; gap:10px; align-items:end; padding-bottom:18px; }
     label { display:grid; gap:5px; color:var(--muted); font-size:12px; }
     input, select { width:100%; min-height:36px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); padding:0 10px; }
     .summary { display:flex; gap:24px; flex-wrap:wrap; border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:var(--panel); padding:12px 14px; color:var(--muted); }
@@ -40,12 +40,13 @@
 <body>
   <header>
     <div class="topbar">
-      <div><h1>规则变更验收证据</h1><div class="subtitle">查看批量测试生成的全部变更，并按操作或规则组独立查询</div></div>
+      <div><h1 id="pageTitle">规则变更总览</h1><div class="subtitle" id="pageSubtitle">查看当前运行期间的规则与设置变更</div></div>
       <a class="back" href="/">返回管理台</a>
     </div>
   </header>
   <main>
     <form class="querybar" id="queryForm">
+      <label>数据来源<select id="profileInput"><option value="current">当前运行</option><option value="rules">批量验收</option></select></label>
       <label>操作类型<select id="actionInput"><option value="">全部操作</option><option value="add">新增</option><option value="update">修改</option><option value="delete">删除</option><option value="replace">替换整组</option><option value="settings">运行设置</option></select></label>
       <label>规则组<select id="ruleTypeInput"><option value="">全部规则组</option><option value="blocked_domains">域名黑名单</option><option value="allowed_domains">域名白名单</option><option value="blocked_client_ips">客户端 IP 黑名单</option><option value="allowed_client_ips">客户端 IP 白名单</option><option value="blocked_url_keywords">URL 关键词</option><option value="blocked_content_keywords">正文关键词</option><option value="blocked_methods">禁止 HTTP 方法</option><option value="settings">运行设置</option></select></label>
       <label>全文查询<input id="searchInput" placeholder="例如 whitelist、cli-evidence"></label>
@@ -64,6 +65,7 @@
   </main>
   <script>
     const params = new URLSearchParams(window.location.search);
+    const profileInput = document.getElementById("profileInput");
     const actionInput = document.getElementById("actionInput");
     const ruleTypeInput = document.getElementById("ruleTypeInput");
     const searchInput = document.getElementById("searchInput");
@@ -73,14 +75,14 @@
       return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     }
     function initializeQuery() {
+      profileInput.value = params.get("profile") === "rules" ? "rules" : "current";
       actionInput.value = params.get("action") || "";
       ruleTypeInput.value = params.get("rule_type") || "";
       searchInput.value = params.get("search") || "";
       limitInput.value = params.get("limit") || "200";
     }
     function buildQuery() {
-      // The rules profile is fixed and read-only; filters only affect displayed evidence.
-      return new URLSearchParams({ profile:"rules", action:actionInput.value, rule_type:ruleTypeInput.value, search:searchInput.value.trim(), limit:limitInput.value || "200" });
+      return new URLSearchParams({ profile:profileInput.value, action:actionInput.value, rule_type:ruleTypeInput.value, search:searchInput.value.trim(), limit:limitInput.value || "200" });
     }
     function renderCounts(id, counts) {
       const text = Object.entries(counts || {}).sort((a,b) => b[1]-a[1]).map(([name,count]) => `${name}: ${count}`).join(" | ");
@@ -92,7 +94,10 @@
       return JSON.stringify(detail, null, 2);
     }
     function render(payload) {
-      document.getElementById("summary").innerHTML = `<span>数据来源：<strong>${escapeHtml(payload.profile)}</strong></span><span>全部记录：<strong>${escapeHtml(payload.total)}</strong></span><span>匹配记录：<strong>${escapeHtml(payload.matched)}</strong></span><span>操作条件：<strong>${escapeHtml(payload.action || "全部")}</strong></span><span>规则组条件：<strong>${escapeHtml(payload.rule_type || "全部")}</strong></span>`;
+      const current = payload.profile === "current";
+      document.getElementById("pageTitle").textContent = current ? "当前运行规则变更" : "批量验收规则变更";
+      document.getElementById("pageSubtitle").textContent = current ? "查看手工操作、前端和命令行产生的真实变更" : "查看规则与运行模式批量测试生成的独立证据";
+      document.getElementById("summary").innerHTML = `<span>数据来源：<strong>${current ? "当前运行" : "批量验收"}</strong></span><span>全部记录：<strong>${escapeHtml(payload.total)}</strong></span><span>匹配记录：<strong>${escapeHtml(payload.matched)}</strong></span><span>操作条件：<strong>${escapeHtml(payload.action || "全部")}</strong></span><span>规则组条件：<strong>${escapeHtml(payload.rule_type || "全部")}</strong></span>`;
       renderCounts("actionCounts", payload.action_counts);
       renderCounts("ruleCounts", payload.rule_type_counts);
       const rows = payload.entries || [];
@@ -102,7 +107,8 @@
     async function runQuery(updateUrl=false) {
       const query = buildQuery();
       if (updateUrl) history.replaceState(null, "", `/changes.html?${query.toString()}`);
-      const response = await fetch(`/api/evidence/changes/query?${query.toString()}`);
+      const endpoint = profileInput.value === "rules" ? "/api/evidence/changes/query" : "/api/changes/query";
+      const response = await fetch(`${endpoint}?${query.toString()}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
       render(payload);

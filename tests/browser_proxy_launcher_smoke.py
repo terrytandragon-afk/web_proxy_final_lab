@@ -14,6 +14,8 @@ def main():
     assert "--proxy-server=$ProxyServer" in script
     assert "--proxy-bypass-list=<-loopback>" in script
     assert "--disable-background-networking" in script
+    assert "--disable-features=HttpsUpgrades,HttpsFirstModeV2,AutomaticHttps" in script
+    assert "--disk-cache-size=1" in script
     assert "--user-data-dir=$profileDir" in script
     assert "127.0.0.1.nip.io:9000/game/index.html" in script
     assert "127.0.0.1.nip.io:9000/content-test.html" in script

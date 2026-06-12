@@ -201,8 +201,16 @@ def main():
     run_cli("delete", "blocked_client_ips", "10.0.0.0/8")
 
     changes = run_cli("changes", "--limit", "30")
-    assert any(item["action"] == "add" for item in changes["changes"])
-    assert any(item["action"] == "settings" for item in changes["changes"])
+    assert any(item["action"] == "add" for item in changes["entries"])
+    assert any(item["action"] == "settings" for item in changes["entries"])
+    client_changes = run_cli(
+        "changes",
+        "--rule-type",
+        "blocked_client_ips",
+        "--limit",
+        "30",
+    )
+    assert client_changes["matched"] >= 3
 
     current_config = run_cli("config")
     assert "config" in current_config
@@ -220,6 +228,8 @@ def main():
     assert rate_window["settings"]["rate_limit_window_seconds"] == 60
     rate_reset = run_cli("rate-reset")
     assert rate_reset["ok"] is True
+    cache_clear = run_cli("cache-clear")
+    assert cache_clear["ok"] is True
     run_cli("set", "rate_limit_enabled", "false")
 
     queried_logs = run_cli(

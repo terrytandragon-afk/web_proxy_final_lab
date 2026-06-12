@@ -686,6 +686,38 @@ blocked.test
 
 默认配置文件中的黑名单域名。
 
+#### 使用真实 HTTPS 网站在 Edge 验收域名拦截
+
+先确认未添加规则时可以通过代理正常访问：
+
+```text
+https://www.bing.com/
+```
+
+随后新增通配符域名规则：
+
+```powershell
+python tools\rule_cli.py add blocked_domains *.bing.com
+```
+
+再次访问 Bing。HTTPS 网站先发送 `CONNECT www.bing.com:443`，代理会在 TLS 隧道建立前拒绝连接。Edge 通常显示：
+
+```text
+ERR_TUNNEL_CONNECTION_FAILED
+```
+
+这是 HTTPS CONNECT 被拒绝后的正常浏览器表现。浏览器不会把 CONNECT 响应中的 HTML 403 页面作为网站页面渲染，具体原因通过当前运行拦截日志确认：
+
+```powershell
+python tools\rule_cli.py log-query --kind blocked --event BLOCK --search bing.com --limit 20
+```
+
+预期日志包含 `reason=domain_blacklist`。验收后删除规则：
+
+```powershell
+python tools\rule_cli.py delete blocked_domains *.bing.com
+```
+
 ### 模块 3：网页正文关键字过滤
 
 正文过滤只适用于代理能够读取返回正文的 **明文 HTTP** 页面。对于 HTTPS，浏览器先发送 `CONNECT 域名:443`，之后请求路径、响应头和网页正文都位于 TLS 加密隧道中，本项目不会解密，所以正文规则无法命中 HTTPS 页面。
@@ -727,6 +759,7 @@ http://neverssl.com/
 python tools\rule_cli.py set mode blacklist
 python tools\rule_cli.py set proxy_auth_enabled false
 python tools\rule_cli.py set rate_limit_enabled false
+python tools\rule_cli.py cache-clear
 python tools\rule_cli.py delete blocked_domains neverssl.com
 python tools\rule_cli.py delete blocked_url_keywords neverssl
 python tools\rule_cli.py add blocked_content_keywords NeverSSL
@@ -735,6 +768,7 @@ python tools\rule_cli.py add blocked_content_keywords NeverSSL
 命令含义：
 
 - 关闭代理认证和限流，防止它们在正文过滤前抢先拦截。
+- 清空代理缓存，确保本次访问重新获取网站正文；新增、修改或删除正文规则时，后端也会自动清空旧响应缓存。
 - 删除可能存在的域名和 URL 规则，确保本次命中只能来自正文规则。
 - 新增正文关键字 `NeverSSL`；正文匹配不区分大小写。
 - 删除不存在的规则返回 `changed=false` 属于正常结果。
@@ -742,8 +776,10 @@ python tools\rule_cli.py add blocked_content_keywords NeverSSL
 在已经配置使用 `127.0.0.1:8080` 代理的 Edge 中打开：
 
 ```text
-http://neverssl.com/
+http://neverssl.com/?proxy-lab=content-check
 ```
+
+查询参数用于避免 Edge 直接使用浏览器自身缓存。必须保留 `http://`；如果地址栏自动变成 `https://`，应使用 `tools\start_proxy_browser.ps1` 启动专用验收浏览器。
 
 预期浏览器显示代理生成的 `403` 页面，详细信息包含：
 
@@ -1999,11 +2035,12 @@ python src\proxy.py --config config.example.json
 http://127.0.0.1:8088/
 ```
 
-首页“批量验收证据”区域会显示 Web 访问日志数、Web 拦截日志数和规则变更数，并提供：
+首页“验收证据”区域会显示 Web 访问日志数、Web 拦截日志数和规则变更数，并提供：
 
 - `Web 访问日志`：查看转发、缓存、HTTPS 隧道等记录。
 - `Web 拦截日志`：查看域名、URL、HTTP 方法、正文、认证和限流拦截。
-- `规则变更总览`：查看全部规则变更，并按操作类型、规则组或全文关键字筛选。
+- `当前规则变更`：查看本次真实运行期间通过前端、API 和命令行完成的修改。
+- `验收规则变更`：查看规则管理批量测试生成的独立证据。
 
 首页提供“当前运行 / 最近验收”数据源切换。选择“最近验收”后，总请求、总拦截、各类拦截次数、排行、右侧日志和规则变更回显会统一显示最近一次自动验收结果；选择“当前运行”后会统一显示本次代理进程数据。两类数据不会互相覆盖。
 
@@ -2041,7 +2078,23 @@ curl.exe "http://127.0.0.1:8088/api/logs/query?profile=web&kind=proxy&event=CONN
 - `search=domain_blacklist`：在整条日志中搜索域名黑名单拦截原因。
 - `limit=100`：最多返回 100 条匹配记录。
 
-### 4. 用命令行总查和独立查询规则变更证据
+### 4. 用命令行查询当前运行与批量验收规则变更
+
+查询当前运行期间的全部规则变更：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/changes/query?limit=100"
+```
+
+只查询当前运行期间的正文关键词修改：
+
+```powershell
+curl.exe "http://127.0.0.1:8088/api/changes/query?rule_type=blocked_content_keywords&limit=100"
+```
+
+`/api/changes/query` 读取当前代理进程的真实变更历史，规则修改完成后无需重启或等待写盘即可查询。
+
+查询批量验收的全部规则变更：
 
 查询全部规则变更：
 
@@ -2091,7 +2144,7 @@ curl.exe "http://127.0.0.1:8088/api/evidence/changes/query?profile=rules&action=
 3. 打开普通管理台，展示“批量验收证据”数量。
 4. 点击 `Web 拦截日志`，分别筛选 `BLOCK`、`FILTER`、`AUTH_REQUIRED`、`RATE_LIMIT`。
 5. 点击 `Web 访问日志`，筛选 `ALLOW`、`CACHE_HIT`、`CONNECT`。
-6. 点击 `规则变更总览`，先展示全部记录，再按新增、修改、删除、替换整组、运行设置筛选。
+6. 点击 `当前规则变更` 展示本次真实操作，再点击 `验收规则变更` 展示批量测试证据。
 7. 使用本节 curl 命令展示前端与后端命令行查询结果一致。
 
 前端导出：

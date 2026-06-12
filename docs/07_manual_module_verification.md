@@ -485,6 +485,8 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 缓存条目增加
 ```
 
+正文关键词规则增删改后，后端会自动清空旧响应缓存；缓存命中时也会重新执行当前正文规则，防止规则热更新后继续返回旧网页。
+
 ## 八、模块 7：HTTPS CONNECT 隧道
 
 ### 实现位置
@@ -839,6 +841,14 @@ blocked by keyword filter: classroom
 
 ```text
 在“规则变更回显”区域，可以用下拉框筛选新增、修改、删除、替换整组等操作记录。
+```
+
+点击管理首页右上角“当前规则变更”，可以查看并筛选本次真实运行期间通过前端、API 和命令行产生的完整变更。页面中的“数据来源”可以切换到“批量验收”，查看自动测试的独立证据。
+
+命令行查询当前运行变更：
+
+```powershell
+python tools\rule_cli.py changes --rule-type blocked_content_keywords --limit 20
 ```
 
 再次验证：
@@ -1222,7 +1232,7 @@ python tests\run_all_smoke.py
 看到：
 
 ```text
-all smoke tests passed
+all test batches passed
 ```
 
 说明项目整体功能正常。

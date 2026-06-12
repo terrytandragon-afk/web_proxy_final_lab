@@ -32,7 +32,7 @@ CSV_FIELD_NAMES = [
 
 
 def write_log_line(config, file_key, line):
-    """Append one line to a configured log file when that log is enabled."""
+    """日志启用时向配置指定的文件追加一行。"""
     log_path_text = config.get(file_key)
     if not log_path_text:
         return
@@ -43,14 +43,14 @@ def write_log_line(config, file_key, line):
 
 
 def log_event(state, event_type, message):
-    """Print and persist one event, including specialized blocked/error logs."""
+    """打印并持久化事件，同时写入专用拦截或错误日志。"""
     config = state.get_config()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {event_type} {message}"
     print(line, flush=True)
 
     write_log_line(config, "log_file", line)
-    # Authentication failures and rate-limit rejections are interception events too.
+    # 认证失败和限流拒绝同样属于拦截事件。
     if event_type.startswith(("BLOCK", "FILTER", "AUTH_REQUIRED", "RATE_LIMIT")):
         write_log_line(config, "blocked_log_file", line)
     if event_type.startswith("ERROR"):
@@ -58,7 +58,7 @@ def log_event(state, event_type, message):
 
 
 def read_log_tail(config, kind, limit):
-    """Read the newest configured access, blocked, or error log lines."""
+    """读取最新的访问、拦截或错误日志行。"""
     file_key = LOG_FILE_KEYS.get(kind, "log_file")
     log_path_text = config.get(file_key)
     if not log_path_text:
@@ -71,7 +71,7 @@ def read_log_tail(config, kind, limit):
 
 
 def parse_log_line(line):
-    """Convert one text log line into fields suitable for a query result table."""
+    """把文本日志解析成适合查询结果表格展示的结构化字段。"""
     match = LOG_LINE_PATTERN.match(line)
     if not match:
         return {"time": "", "event": "UNKNOWN", "message": line, "fields": {}, "raw": line}
@@ -93,7 +93,7 @@ def parse_log_line(line):
 
 
 def query_log_entries(config, kind="proxy", events=None, search="", limit=200):
-    """Filter logs like a small read-only database query and return structured rows."""
+    """像只读小型数据库一样筛选日志，并返回结构化记录。"""
     normalized_kind = kind if kind in LOG_FILE_KEYS else "proxy"
     file_key = LOG_FILE_KEYS[normalized_kind]
     log_path_text = config.get(file_key)
@@ -132,19 +132,19 @@ def query_log_entries(config, kind="proxy", events=None, search="", limit=200):
         "search": search,
         "total": len(lines),
         "matched": len(matched_entries),
-        # Detail pages are easier to scan with the newest event first.
+        # 详情页按时间倒序展示，便于先查看最新事件。
         "entries": list(reversed(matched_entries[-bounded_limit:])),
     }
 
 
 def build_log_csv(query_result):
-    """Serialize structured query results as an Excel-friendly UTF-8 CSV file."""
+    """把结构化查询结果序列化为适合 Excel 打开的 UTF-8 CSV。"""
     text_buffer = io.StringIO(newline="")
     writer = csv.DictWriter(text_buffer, fieldnames=CSV_FIELD_NAMES)
     writer.writeheader()
     for entry in query_result.get("entries", []):
         fields = entry.get("fields", {})
-        # Keep common audit fields in dedicated columns while retaining raw evidence.
+        # 常用审计字段单独成列，同时保留完整原始证据。
         writer.writerow(
             {
                 "time": entry.get("time", ""),
@@ -160,12 +160,12 @@ def build_log_csv(query_result):
                 "raw": entry.get("raw", ""),
             }
         )
-    # utf-8-sig adds a BOM so Windows Excel recognizes Chinese text without prompts.
+    # utf-8-sig 添加 BOM，使 Windows Excel 能直接识别中文。
     return text_buffer.getvalue().encode("utf-8-sig")
 
 
 def clear_log_files(config):
-    """Clear all configured runtime log files for a fresh classroom demo."""
+    """清空当前配置的运行日志，便于重新进行课堂演示。"""
     cleared = []
     for file_key in LOG_FILE_KEYS.values():
         log_path_text = config.get(file_key)

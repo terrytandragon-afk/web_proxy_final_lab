@@ -84,6 +84,15 @@ def main():
     assert stats["cache_hits"] == 1
     assert stats["cache_entries"] == 1
 
+    # 新增正文规则必须清理旧缓存，否则浏览器会继续看到规则添加前的页面。
+    result = state.add_list_rule("blocked_content_keywords", "cacheable response")
+    assert result["changed"] is True
+    assert result["cache_cleared"] == 1
+    filtered = request_once()
+    assert "content_keyword:cacheable response" in filtered
+    assert "cacheable response hit=2" not in filtered
+    assert UPSTREAM_HITS == 2
+
     print("stage10 cache smoke test passed")
 
     upstream.shutdown()

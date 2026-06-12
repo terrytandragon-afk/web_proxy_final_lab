@@ -529,7 +529,7 @@ python tests\run_all_smoke.py
 预期输出：
 
 ```text
-all smoke tests passed
+all test batches passed
 ```
 
 逐个运行命令：
@@ -685,7 +685,7 @@ python tests\run_all_smoke.py
 ### 预期输出
 
 ```text
-all smoke tests passed
+all test batches passed
 ```
 
 ### 前端展示验证命令

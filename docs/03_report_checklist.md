@@ -349,7 +349,7 @@ stage13 auth smoke test passed
 stage14 rate limit smoke test passed
 stage15 rule management smoke test passed
 stage16 rule cli smoke test passed
-all smoke tests passed
+all test batches passed
 ```
 
 ### 截图 L：前端展示验收
