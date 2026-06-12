@@ -22,3 +22,4 @@ report/*.log
 report/*.out
 report/*.toc
 report/*.xdv
+report/*.synctex.gz
