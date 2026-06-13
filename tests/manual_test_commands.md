@@ -528,6 +528,14 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 ```text
 第一次请求缓存未命中，第二次请求缓存命中。
 两次响应中的 X-Upstream-Hit 和 upstream-hit 都应为 1。
+
+浏览器缓存验收请使用专用浏览器中的：
+
+```text
+http://127.0.0.1.nip.io:9000/cache.txt
+```
+
+清空代理缓存后在 TTL 内刷新同一地址。第一次日志为 `CACHE_MISS`、`ALLOW`，第二次为 `CACHE_HIT`，页面中的 `upstream-hit` 保持不变。若每次刷新都增加，说明浏览器绕过代理、URL 不一致、缓存被清空或 TTL 已过期。
 管理前端的“缓存命中”“缓存未命中”“缓存条目”会变化。
 ```
 

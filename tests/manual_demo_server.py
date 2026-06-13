@@ -39,6 +39,10 @@ class ManualDemoHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Upstream-Hit", str(hit))
+        if route == "/cache.txt":
+            # 浏览器每次刷新都向代理发请求，第二次由代理缓存响应，
+            # 便于观察 CACHE_HIT 且 upstream-hit 保持不变。
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 

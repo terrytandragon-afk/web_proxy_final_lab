@@ -621,7 +621,7 @@ Edge/Chrome 默认绕过 `localhost` 和 `127.0.0.1`。即使 Windows 代理设�
 powershell -ExecutionPolicy Bypass -File tools\start_proxy_browser.ps1
 ```
 
-该脚本启动独立 Edge/Chrome 配置，通过 `--proxy-bypass-list=<-loopback>` 取消本机地址绕过，并自动打开 `127.0.0.1.nip.io:9000` 的 URL 与正文过滤测试页。该域名解析到本机，但不会触发 Chromium 对 `127.0.0.1` 字面地址的默认代理绕过。判断浏览器是否真的经过代理：代理终端必须打印请求，管理前端“当前运行”的总请求必须增加。
+该脚本启动独立 Edge/Chrome 配置，通过 `--proxy-bypass-list=<-loopback>` 取消本机地址绕过，并自动打开 `127.0.0.1.nip.io:9000` 的 URL、正文过滤和缓存测试页。该域名解析到本机，但不会触发 Chromium 对 `127.0.0.1` 字面地址的默认代理绕过。判断浏览器是否真的经过代理：代理终端必须打印请求，管理前端“当前运行”的总请求必须增加。
 
 启动前只验证脚本，不打开浏览器：
 
@@ -799,6 +799,8 @@ python tools\rule_cli.py log-query --kind blocked --event FILTER --search nevers
 FILTER host=neverssl.com keyword=NeverSSL
 ```
 
+若日志出现 `ERROR host=neverssl.com ... status=504`，说明正在运行的仍是旧版代理进程，或目标网站确实未返回完整响应。当前实现会按 `Content-Length`、chunked 结束块和无正文状态判断响应结束，不再等待目标网站主动关闭 TCP 连接。修改代码后必须停止旧代理并重新执行 `python src\proxy.py --config config.example.json`。
+
 验收后删除演示规则：
 
 ```powershell
@@ -946,6 +948,14 @@ curl.exe -i --noproxy no-host-bypass.invalid -x http://127.0.0.1:8080 http://127
 第一次：缓存未命中。
 第二次：日志出现 CACHE_HIT。
 两次响应均显示 X-Upstream-Hit: 1 和 upstream-hit=1。
+
+也可以在专用验收浏览器中访问：
+
+```text
+http://127.0.0.1.nip.io:9000/cache.txt
+```
+
+清空代理缓存后，在 TTL 有效期内刷新完全相同的地址。第二次请求应在日志中显示 `CACHE_HIT`，页面中的 `upstream-hit` 保持不变。浏览器访问字面地址 `127.0.0.1` 时可能绕过代理；若每次刷新计数都增加，应先检查代理终端是否收到该请求、URL 是否完全一致，以及缓存是否已过期。
 前端“缓存命中”“缓存条目”增加。
 ```
 

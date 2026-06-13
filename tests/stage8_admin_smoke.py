@@ -261,6 +261,7 @@ def main():
         assert b"/changes.html?profile=rules" in body
         assert b"http://127.0.0.1.nip.io:9000/game/index.html" in body
         assert b"http://127.0.0.1.nip.io:9000/content-test.html" in body
+        assert b"http://127.0.0.1.nip.io:9000/cache.txt" in body
         assert "验证 URL 拦截".encode("utf-8") in body
         assert "验证正文过滤".encode("utf-8") in body
         assert "当前运行".encode("utf-8") in body

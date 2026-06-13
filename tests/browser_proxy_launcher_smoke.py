@@ -19,6 +19,7 @@ def main():
     assert "--user-data-dir=$profileDir" in script
     assert "127.0.0.1.nip.io:9000/game/index.html" in script
     assert "127.0.0.1.nip.io:9000/content-test.html" in script
+    assert "127.0.0.1.nip.io:9000/cache.txt" in script
     assert "127.0.0.1:8080" in script
 
     powershell = shutil.which("powershell.exe")

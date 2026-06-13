@@ -1758,3 +1758,36 @@ latexmk -xelatex -interaction=nonstopmode final_report.tex
 - `stage18_client_ip_policy_smoke.py`：实际验证客户端黑名单拒绝、白名单拒绝、规则热更新恢复、统计和日志。
 - `run_all_smoke.py`：运行全部 Web/代理功能与规则/运行模式回归。
 - `latexmk -xelatex`：使用 XeLaTeX 自动完成中文报告所需的多轮编译，并生成最终 PDF。
+## 阶段 30：真实网站正文过滤响应边界修复
+
+### 实现内容
+
+- 修复代理只等待目标服务器关闭 TCP 连接才处理响应的问题。
+- 新增 HTTP 响应完整性判断：
+  - `Content-Length` 响应收到指定正文长度后立即完成。
+  - chunked 响应收到 0 长度结束块和尾部空行后立即完成。
+  - HEAD、1xx、204、304 等无正文响应在响应头完成后结束。
+  - 没有长度信息的旧式响应仍兼容连接关闭或超时后使用已收到内容。
+- 正文过滤新增 gzip 和 deflate 文本解压检查。
+- 专用验收浏览器新增缓存测试页 `http://127.0.0.1.nip.io:9000/cache.txt`。
+
+### 故障原因
+
+真实访问 `http://neverssl.com/` 时，旧版代理日志先出现 `CACHE_MISS`，随后出现：
+
+```text
+ERROR host=neverssl.com status=504
+```
+
+目标网站已经发送响应正文，但连接未及时关闭。旧版代理一直等待连接结束，直到超时后丢弃已收到响应，因此正文关键词没有机会执行。修复后，代理根据 HTTP 报文边界及时完成接收并进入正文过滤。
+
+### 验证命令
+
+```powershell
+python tests\stage6_smoke.py
+python tests\public_http_filter_examples_smoke.py
+python tests\stage10_cache_smoke.py
+python tests\run_all_smoke.py
+```
+
+`stage6_smoke.py` 会模拟完整正文发送后继续保持连接的 HTTP/1.1 服务器。旧逻辑会超时，修复后的代理应立即返回正文过滤 403 页面。

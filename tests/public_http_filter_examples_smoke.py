@@ -1,4 +1,5 @@
 import sys
+import gzip
 from pathlib import Path
 
 
@@ -69,6 +70,8 @@ def main():
         {"method": "GET", "host": "neverssl.com", "path": "/"},
         "127.0.0.1",
     )
+    assert proxy.http_response_is_complete(chunked_response, "GET") is True
+    assert proxy.http_response_is_complete(chunked_response[:-5], "GET") is False
     assert chunked_keyword == "NeverSSL"
     assert b"403 Forbidden" in chunked_filtered
 
@@ -89,6 +92,25 @@ def main():
     )
     assert chinese_keyword == "保密"
     assert b"403 Forbidden" in chinese_filtered
+
+    # 某些公网服务器即使收到 Accept-Encoding: identity 仍可能返回 gzip 文本。
+    compressed_body = gzip.compress(b"<html><body>NeverSSL compressed page</body></html>")
+    compressed_response = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: text/html; charset=utf-8\r\n"
+        b"Content-Encoding: gzip\r\n"
+        + f"Content-Length: {len(compressed_body)}\r\n".encode("ascii")
+        + b"\r\n"
+        + compressed_body
+    )
+    compressed_filtered, compressed_keyword = proxy.filter_response_content(
+        compressed_response,
+        {"blocked_content_keywords": ["NeverSSL"]},
+        {"method": "GET", "host": "neverssl.com", "path": "/"},
+        "127.0.0.1",
+    )
+    assert compressed_keyword == "NeverSSL"
+    assert b"403 Forbidden" in compressed_filtered
     print("public HTTP filter examples smoke test passed")
 
 

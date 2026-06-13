@@ -1,6 +1,7 @@
 import argparse
 import base64
 import fnmatch
+import gzip
 from html import escape
 import ipaddress
 import json
@@ -8,6 +9,7 @@ import select
 import socket
 import threading
 import time
+import zlib
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -931,6 +933,85 @@ def decode_chunked_body(body):
         return body
 
 
+def chunked_body_is_complete(body):
+    """判断 chunked 响应是否已经收到 0 长度结束块及可选尾部字段。"""
+    position = 0
+    try:
+        while True:
+            line_end = body.find(b"\r\n", position)
+            if line_end < 0:
+                return False
+            size_text = body[position:line_end].split(b";", 1)[0].strip()
+            size = int(size_text, 16)
+            position = line_end + 2
+            if size == 0:
+                # 无尾部字段时紧跟一个 CRLF；有尾部字段时以空行结束。
+                return body[position:position + 2] == b"\r\n" or b"\r\n\r\n" in body[position:]
+            chunk_end = position + size
+            if chunk_end + 2 > len(body) or body[chunk_end:chunk_end + 2] != b"\r\n":
+                return False
+            position = chunk_end + 2
+    except ValueError:
+        return False
+
+
+def http_response_is_complete(response_bytes, request_method="GET"):
+    """按 HTTP 响应头判断报文是否完整，避免依赖目标服务器主动关闭连接。"""
+    if b"\r\n\r\n" not in response_bytes:
+        return False
+
+    header_bytes, body = response_bytes.split(b"\r\n\r\n", 1)
+    header_lines = header_bytes.decode("iso-8859-1", errors="replace").splitlines()
+    status_code = parse_status_code(response_bytes)
+
+    if request_method.upper() == "HEAD" or status_code in {204, 304}:
+        return True
+
+    transfer_encoding = response_header_value(header_lines, "Transfer-Encoding").lower()
+    if "chunked" in transfer_encoding:
+        return chunked_body_is_complete(body)
+
+    content_length = response_header_value(header_lines, "Content-Length").strip()
+    if content_length:
+        try:
+            return len(body) >= int(content_length)
+        except ValueError:
+            return False
+
+    # 没有长度信息的 HTTP/1.x 响应只能由连接关闭标记结束。
+    return False
+
+
+def response_has_explicit_length(response_bytes):
+    """判断响应是否声明了必须完整接收的 Content-Length 或 chunked 边界。"""
+    if b"\r\n\r\n" not in response_bytes:
+        return False
+    header_bytes = response_bytes.split(b"\r\n\r\n", 1)[0]
+    header_lines = header_bytes.decode("iso-8859-1", errors="replace").splitlines()
+    return bool(
+        response_header_value(header_lines, "Content-Length").strip()
+        or "chunked" in response_header_value(header_lines, "Transfer-Encoding").lower()
+    )
+
+
+def receive_http_response(upstream_socket, request_method="GET"):
+    """接收一个完整 HTTP 响应；有报文边界时收到正文后立即返回。"""
+    response = bytearray()
+    while True:
+        try:
+            chunk = upstream_socket.recv(BUFFER_SIZE)
+        except socket.timeout:
+            # 少数旧式服务器没有长度头且保持连接；已收到正文时保留可用响应。
+            if response and b"\r\n\r\n" in response and not response_has_explicit_length(response):
+                return bytes(response)
+            raise
+        if not chunk:
+            return bytes(response)
+        response.extend(chunk)
+        if http_response_is_complete(response, request_method):
+            return bytes(response)
+
+
 def decode_text_body(body, content_type):
     """按响应声明字符集解码正文，并兼容常见 UTF-8、GB18030 页面。"""
     declared_charset = ""
@@ -955,7 +1036,7 @@ def decode_text_body(body, content_type):
 
 
 def filter_response_content(response_bytes, config, request_info=None, client_ip=""):
-    """对 HTTP 明文文本响应做正文关键字过滤，二进制或压缩内容直接放行。"""
+    """对 HTTP 明文文本响应做正文关键字过滤，二进制内容直接放行。"""
     if b"\r\n\r\n" not in response_bytes:
         return response_bytes, None
 
@@ -967,13 +1048,22 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
     content_encoding = response_header_value(header_lines, "Content-Encoding")
     transfer_encoding = response_header_value(header_lines, "Transfer-Encoding")
 
-    if content_encoding and content_encoding.lower() not in ("identity", "none"):
-        return response_bytes, None
-
     if not is_text_content_type(content_type):
         return response_bytes, None
 
     inspection_body = decode_chunked_body(body) if "chunked" in transfer_encoding.lower() else body
+    encoding = content_encoding.strip().lower()
+    try:
+        if encoding == "gzip":
+            inspection_body = gzip.decompress(inspection_body)
+        elif encoding == "deflate":
+            inspection_body = zlib.decompress(inspection_body)
+        elif encoding not in ("", "identity", "none"):
+            # 未支持的压缩格式保持原响应，避免破坏客户端可用内容。
+            return response_bytes, None
+    except (OSError, zlib.error):
+        return response_bytes, None
+
     body_text = decode_text_body(inspection_body, content_type)
     body_text_lower = body_text.lower()
 
@@ -1050,14 +1140,9 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
             upstream_socket.settimeout(timeout)
             upstream_socket.sendall(upstream_request)
 
-            chunks = []
-            while True:
-                chunk = upstream_socket.recv(BUFFER_SIZE)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-
-            response_bytes = b"".join(chunks)
+            # 按 Content-Length/chunked 等 HTTP 边界接收；不能只等待 TCP 关闭，
+            # 否则 NeverSSL 等保持连接的网站会在正文已到齐后仍被误判为 504。
+            response_bytes = receive_http_response(upstream_socket, request_info["method"])
             status_code = parse_status_code(response_bytes)
             response_bytes, blocked_keyword = filter_response_content(
                 response_bytes,

@@ -16,13 +16,19 @@ UPSTREAM_PORT = 19083
 
 
 class KeywordHandler(BaseHTTPRequestHandler):
+    # 模拟 NeverSSL 一类发送完整响应后仍保持 TCP 连接的 HTTP/1.1 网站。
+    protocol_version = "HTTP/1.1"
+
     def do_GET(self):
         body = b"<html><body>This page contains forbidden content.</body></html>"
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "keep-alive")
         self.end_headers()
         self.wfile.write(body)
+        self.wfile.flush()
+        time.sleep(2)
 
     def log_message(self, format, *args):
         return
@@ -37,6 +43,7 @@ def main():
         "mode": "blacklist",
         "blocked_domains": [],
         "blocked_content_keywords": ["forbidden"],
+        "timeout_seconds": 1,
     }
     server_thread = threading.Thread(
         target=proxy.start_server,

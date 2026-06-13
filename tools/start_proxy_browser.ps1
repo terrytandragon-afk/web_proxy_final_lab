@@ -1,6 +1,7 @@
 param(
     [string]$StartUrl = "http://127.0.0.1.nip.io:9000/game/index.html",
     [string]$SecondUrl = "http://127.0.0.1.nip.io:9000/content-test.html",
+    [string]$ThirdUrl = "http://127.0.0.1.nip.io:9000/cache.txt",
     [string]$ProxyServer = "http://127.0.0.1:8080",
     [switch]$ValidateOnly
 )
@@ -35,13 +36,15 @@ $arguments = @(
     "--no-first-run",
     "--new-window",
     $StartUrl,
-    $SecondUrl
+    $SecondUrl,
+    $ThirdUrl
 )
 
 Write-Host "Browser: $browser"
 Write-Host "Proxy: $ProxyServer"
 Write-Host "URL filter test: $StartUrl"
 Write-Host "Content filter test: $SecondUrl"
+Write-Host "Cache test: $ThirdUrl"
 
 if ($ValidateOnly) {
     Write-Host "Launcher validation passed."

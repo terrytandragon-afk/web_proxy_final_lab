@@ -21,10 +21,9 @@ LaTeX 会自动用截图替换报告中的占位框。
 | `manual-url-httpforever.png` | Edge 访问 `http://httpforever.com/url-filter-demo` 后显示 403 页面，展开详情显示 `url_keyword:url-filter-demo` |
 | `manual-content-neverssl.png` | Edge 访问 `http://neverssl.com/?proxy-lab=content-check` 后显示正文过滤 403 页面和 `content_keyword:NeverSSL` |
 | `manual-cache-log.png` | 当前运行访问日志中，同一地址依次出现 `CACHE_MISS`、`ALLOW`、`CACHE_HIT` |
-| `manual-auth.png` | 未认证请求返回 407，正确代理账号请求正常返回 |
+| `manual-auth.png` | 当前运行日志显示错误或缺失凭据产生 `AUTH_REQUIRED`，随后出现正常 CONNECT |
 | `rate-limit.png` | 浏览器在代理限流开启后出现访问失败 |
 | `rate-limit-log.png` | 当前运行日志显示 `RATE_LIMIT`、`count`、`limit` 和 `retry_after` |
-| `manual-client-ip.png` | 客户端 IP 黑/白名单规则、403 结果与对应日志 |
 | `manual-blocked-logs.png` | 当前运行日志详情页显示域名、URL、正文、认证或限流记录 |
 | `manual-rule-changes.png` | 规则变更总览选择“当前运行”，显示手工规则和运行设置修改 |
 
