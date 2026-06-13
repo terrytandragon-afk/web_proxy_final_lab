@@ -111,73 +111,115 @@
 % ---------------------------------------------------------------------------
 % 课程成绩评价封面：根据“课程设计报告封面.docx”重制。
 % ---------------------------------------------------------------------------
+\newgeometry{left=3.1cm,right=2.8cm,top=2.6cm,bottom=2.5cm}
 \begin{titlepage}
 \thispagestyle{empty}
-\centering
+\begin{center}
+{\heiti\bfseries\zihao{3} 上海大学·2025·～·2026·学年·\underline{春}·季学期\par}
+\vspace{0.55cm}
+{\heiti\bfseries\zihao{3} \underline{计算机安全与保密技术}·课程成绩评价表\par}
+\end{center}
 
-{\zihao{4}\heiti 上海大学 2025～2026 学年春季学期\par}
-\vspace{0.7cm}
-{\zihao{2}\heiti 计算机安全与保密技术课程成绩评价表\par}
-\vspace{0.8cm}
+% Word 模板右上角的独立成绩填写框。
+\begin{tikzpicture}[remember picture,overlay]
+\node[anchor=north east] at ([xshift=-2.35cm,yshift=-4.00cm]current page.north east) {
+  \renewcommand{\arraystretch}{1}
+  \begin{tabular}{|>{\centering\arraybackslash}m{0.55cm}|m{1.75cm}|}
+  \hline
+  \rule{0pt}{1.75cm}\zihao{-4}成\\[-0.15em]绩 & \\
+  \hline
+  \end{tabular}
+};
+\end{tikzpicture}
 
-\renewcommand{\arraystretch}{1.55}
-\begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}p{2.5cm}|X|>{\centering\arraybackslash}p{2.5cm}|X|}
-\hline
-课程名称 & 计算机安全与保密技术 & 课程编号 & 08A65002 \\
-\hline
-论文题目 & \multicolumn{3}{c|}{基于 Socket 的 Web 代理服务器设计与实现} \\
-\hline
-学生姓名 & 谭坤 & 学号 & 23122781 \\
-\hline
-所在院系 & \multicolumn{3}{c|}{上海大学 计算机工程与科学学院} \\
-\hline
-\end{tabularx}
+\vspace{0.45cm}
+\noindent\zihao{-4}
+课程名称：\underline{\makebox[4.65cm][c]{计算机安全与保密技术}}
+\hspace{0.15cm}
+课程编号：\underline{\makebox[2.55cm][c]{\bfseries 08A65002}}
+\par
 
-\vspace{0.5cm}
-{\heiti 课程论文评阅记录\par}
-\vspace{0.3cm}
+\vspace{0.55cm}
+\noindent
+论文题目：\underline{\makebox[11.95cm][c]{基于 Socket 的 Web 代理服务器设计与实现}}
+\par
 
-\renewcommand{\arraystretch}{1.35}
-\begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}p{2.2cm}|X|X|X|>{\centering\arraybackslash}p{1.8cm}|}
-\hline
-\multicolumn{5}{|c|}{\heiti 课程论文评价要素} \\
-\hline
-\multirow{2}{*}{项目设计 35\%} & 技术正确 & 内容完成 & 算法新颖 & 得分： \\
-\cline{2-5}
- &  &  &  &  \\
-\hline
-\multirow{2}{*}{程序实现 35\%} & 功能完成 & 运行稳定 & 设计合理 & 得分： \\
-\cline{2-5}
- &  &  &  &  \\
-\hline
-\multirow{2}{*}{报告内容与格式 30\%} & 报告清晰 & 见解独到 & 格式规范 & 得分： \\
-\cline{2-5}
- &  &  &  &  \\
-\hline
-报告值得肯定之处 & \multicolumn{4}{p{13.1cm}|}{\vspace{2.1cm}} \\
-\hline
-报告存在主要问题 & \multicolumn{4}{p{13.1cm}|}{\vspace{2.1cm}} \\
-\hline
-其他需要说明情况 & \multicolumn{4}{p{13.1cm}|}{\vspace{1.4cm}} \\
-\hline
-\end{tabularx}
+\vspace{0.55cm}
+\noindent
+学生姓名：\underline{\makebox[1.85cm][c]{谭坤}}
+\hspace{0.18cm}
+学号：\underline{\makebox[2.0cm][c]{23122781}}
+\hspace{0.18cm}
+所在院系：\underline{\makebox[4.35cm][c]{\zihao{-5}上海大学计算机工程与科学学院}}
+\par
 
-\vfill
-\begin{tabularx}{\textwidth}{X X}
-论文成绩：\underline{\hspace{3.6cm}}（百分制） &
-任课教师：\underline{\hspace{4cm}} \\[1.0em]
-\multicolumn{2}{l}{（课程论文占期末总评成绩的 60\%）} \\[1.0em]
-\multicolumn{2}{l}{评阅日期：\underline{\hspace{4cm}}}
-\end{tabularx}
+\vspace{1.7cm}
+\noindent{\zihao{-4}课程论文评阅记录：\par}
+\vspace{0.35cm}
 
-\vspace{0.5cm}
-\begin{flushleft}
-\zihao{-5} 注：后接课程论文，格式参照课程论文模板或公开发表论文的样式。
+\renewcommand{\arraystretch}{1}
+\setlength{\tabcolsep}{3pt}
+\noindent
+\begin{tabular}{|>{\centering\arraybackslash}m{1.95cm}|
+                  >{\centering\arraybackslash}m{2.0cm}|
+                  >{\centering\arraybackslash}m{2.0cm}|
+                  >{\centering\arraybackslash}m{2.05cm}|
+                  >{\centering\arraybackslash}m{2.7cm}|
+                  >{\centering\arraybackslash}m{2.7cm}|}
+\hline
+\rule{0pt}{1.35cm}
+课程论文\newline 评价要素 &
+项目设计\newline 35\% &
+程序实现\newline 35\% &
+报告内容与\newline 格式 30\% &
+报告值得\newline 肯定之处 &
+报告存在\newline 主要问题 \\
+\hline
+\rule{0pt}{3.65cm}
+得分（等\newline 级或百分\newline 制） &
+&
+&
+&
+\raggedright\arraybackslash\zihao{6}
+[A]技术正确\newline
+[B]内容完成\newline
+[C]算法新颖\newline
+[D]报告清晰\newline
+[E]见解独到\newline
+[F]格式规范 &
+\raggedright\arraybackslash\zihao{6}
+[A]技术错误\newline
+[B]技术欠佳\newline
+[C]未达要求\newline
+[D]叙述欠佳\newline
+[E]错字语病\newline
+[F]格式欠佳 \\
+\hline
+\rule{0pt}{2.85cm}
+其他需要\newline 说明情况 &
+\multicolumn{5}{m{11.45cm}|}{} \\
+\hline
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+
+\vspace{0.9cm}
+\noindent\zihao{-4}
+论文成绩：\underline{\makebox[4.0cm][c]{}}\quad（百分制）
+\hfill
+任课教师：\underline{\makebox[2.35cm][c]{}}
+\par
 
 \vspace{0.35cm}
-\zihao{-5} 项目仓库：\href{https://github.com/terrytandragon-afk/web_proxy_final_lab}{github.com/terrytandragon-afk/web\_proxy\_final\_lab}
-\end{flushleft}
+\noindent\hspace{1.75cm}{\zihao{5}（课程论文占期末总评成绩的 60\%）}
+\hfill
+\zihao{-4}评阅日期：\underline{\makebox[2.35cm][c]{}}
+\par
+
+\vspace{0.75cm}
+\noindent\zihao{-4}
+GitHub：\href{https://github.com/terrytandragon-afk/web_proxy_final_lab}{https://github.com/terrytandragon-afk/web\_proxy\_final\_lab}
 \end{titlepage}
+\restoregeometry
 
 % ---------------------------------------------------------------------------
 % 论文题名、中英文摘要与关键词。
