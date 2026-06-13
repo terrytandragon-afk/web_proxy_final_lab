@@ -1791,3 +1791,23 @@ python tests\run_all_smoke.py
 ```
 
 `stage6_smoke.py` 会模拟完整正文发送后继续保持连接的 HTTP/1.1 服务器。旧逻辑会超时，修复后的代理应立即返回正文过滤 403 页面。
+
+## 阶段 31：期末报告展示结构与验收结果完善
+
+### 实现内容
+
+- 正文关键词手工验收改用项目自带测试页 `http://127.0.0.1.nip.io:9000/content-test.html`，以 `forbidden` 作为正文规则，避免公网网站状态变化影响现场展示。
+- 期末报告第三章采用“总体设计、模块流程、实现逻辑”的总分结构，增加 HTTP 请求转发、正文过滤和动态规则管理流程图。
+- 第四章在每组验收截图后补充观察结果、判断依据和功能结论，使浏览器结果、日志和统计形成完整证据链。
+- 功能需求分析表增加正式表题；封面页尾增加 GitHub 项目仓库链接。
+- 扩写项目心得体会，并将附录精简为 `A 关键源代码` 的代表性实现片段。
+- 使用用户实测截图 `manual-content-forbiden.png` 替换公网正文过滤占位图。
+
+### 报告生成命令
+
+```powershell
+cd report
+latexmk -xelatex -jobname=final_report_revised -interaction=nonstopmode final_report.tex
+```
+
+生成结果为 `report/final_report_revised.pdf`。

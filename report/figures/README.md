@@ -19,7 +19,7 @@ LaTeX 会自动用截图替换报告中的占位框。
 | `manual-domain-bing.png` | 添加 `*.bing.com` 后，Edge 显示 `ERR_TUNNEL_CONNECTION_FAILED` |
 | `manual-domain-bing-log.png` | 当前运行拦截日志显示 `host=www.bing.com` 和 `reason=domain_blacklist` |
 | `manual-url-httpforever.png` | Edge 访问 `http://httpforever.com/url-filter-demo` 后显示 403 页面，展开详情显示 `url_keyword:url-filter-demo` |
-| `manual-content-neverssl.png` | Edge 访问 `http://neverssl.com/?proxy-lab=content-check` 后显示正文过滤 403 页面和 `content_keyword:NeverSSL` |
+| `manual-content-forbiden.png` | Edge 访问 `http://127.0.0.1.nip.io:9000/content-test.html` 后显示正文过滤 403 页面和 `content_keyword:forbidden` |
 | `manual-cache-log.png` | 当前运行访问日志中，同一地址依次出现 `CACHE_MISS`、`ALLOW`、`CACHE_HIT` |
 | `manual-auth.png` | 当前运行日志显示错误或缺失凭据产生 `AUTH_REQUIRED`，随后出现正常 CONNECT |
 | `rate-limit.png` | 浏览器在代理限流开启后出现访问失败 |

@@ -173,6 +173,9 @@
 \vspace{0.5cm}
 \begin{flushleft}
 \zihao{-5} 注：后接课程论文，格式参照课程论文模板或公开发表论文的样式。
+
+\vspace{0.35cm}
+\zihao{-5} 项目仓库：\href{https://github.com/terrytandragon-afk/web_proxy_final_lab}{github.com/terrytandragon-afk/web\_proxy\_final\_lab}
 \end{flushleft}
 \end{titlepage}
 
@@ -191,7 +194,7 @@
 \vspace{0.8em}
 \noindent{\heiti\zihao{-5} 摘要：}
 {\songti\zihao{-5}
-为实现课程要求的 Web 请求转发、指定域名拦截和网页关键词过滤，本文设计并实现了一套基于 Python Socket 的正向代理服务器。系统采用多线程处理客户端连接，通过解析 HTTP 代理请求建立上游连接，并按照客户端地址、认证状态、访问频率、请求方法、域名和 URL 的顺序执行访问控制；对于明文 HTTP 文本响应，代理在返回客户端前检查正文关键词。系统同时提供 HTTPS CONNECT 隧道、GET 缓存、动态规则管理、管理前端和日志审计功能。测试采用批量自动验证与真实外网手工验收相结合的方法，Web/代理功能批次 15 项、规则与运行模式批次 7 项均通过，真实 HTTP 网站的 URL 与正文过滤能够生成明确的 403 拦截页面。结果表明，该系统完成了题目规定功能，并具备规则热更新、运行统计和可追溯验收能力。}
+为实现课程要求的 Web 请求转发、指定域名拦截和网页关键词过滤，本文设计并实现了一套基于 Python Socket 的正向代理服务器。系统采用多线程处理客户端连接，通过解析 HTTP 代理请求建立上游连接，并按照客户端地址、认证状态、访问频率、请求方法、域名和 URL 的顺序执行访问控制；对于明文 HTTP 文本响应，代理在返回客户端前检查正文关键词。系统同时提供 HTTPS CONNECT 隧道、GET 缓存、动态规则管理、管理前端和日志审计功能。测试采用批量自动验证与浏览器手工验收相结合的方法，Web/代理功能批次 15 项、规则与运行模式批次 7 项均通过；真实外网 URL 拦截和本地可控正文过滤均能够生成明确的 403 拦截页面。结果表明，该系统完成了题目规定功能，并具备规则热更新、运行统计和可追溯验收能力。}
 
 \vspace{0.5em}
 \noindent{\heiti\zihao{-5} 关键词：}
@@ -209,7 +212,7 @@
 \vspace{0.6em}
 \noindent{\bfseries\zihao{-5} Abstract: }
 {\zihao{-5}
-This project designs and implements a forward Web proxy server using Python sockets. The proxy parses HTTP proxy requests, establishes upstream connections, forwards responses, and applies access-control policies based on client IP addresses, authentication, request rate, HTTP methods, domains, and URL keywords. For plain HTTP text responses, the proxy examines response bodies and replaces blocked pages with an explicit HTTP 403 notice. The system also provides HTTPS CONNECT tunneling, GET caching, runtime rule management, an administration dashboard, and auditable logs. Automated batch tests and manual tests against real public HTTP websites were used for verification. All 15 Web/proxy tests and 7 rule/runtime-mode tests passed. The results show that the system satisfies the course requirements and provides practical rule updates, statistics, and traceable acceptance evidence.}
+This project designs and implements a forward Web proxy server using Python sockets. The proxy parses HTTP proxy requests, establishes upstream connections, forwards responses, and applies access-control policies based on client IP addresses, authentication, request rate, HTTP methods, domains, and URL keywords. For plain HTTP text responses, the proxy examines response bodies and replaces blocked pages with an explicit HTTP 403 notice. The system also provides HTTPS CONNECT tunneling, GET caching, runtime rule management, an administration dashboard, and auditable logs. Automated batch tests and browser-based manual tests were used for verification. All 15 Web/proxy tests and 7 rule/runtime-mode tests passed; a real public URL and a locally controlled response body were both blocked as expected. The results show that the system satisfies the course requirements and provides practical rule updates, statistics, and traceable acceptance evidence.}
 
 \vspace{0.5em}
 \noindent{\bfseries\zihao{-5} Key words: }
@@ -232,6 +235,7 @@ Web 代理服务器位于客户端和目标 Web 服务器之间。客户端将�
 项目功能按照课程必做功能、系统管理功能和扩展访问控制功能进行划分。课程必做功能直接对应题目要求；系统管理功能用于解决规则如何修改、结果如何展示、行为如何追溯的问题；扩展访问控制功能用于体现代理服务器在实际网络安全场景中的使用方式。
 
 \begin{longtable}{p{0.22\textwidth}p{0.68\textwidth}}
+\caption{Web 代理服务器功能需求分析}\label{tab:requirements}\\
 \toprule
 \textbf{功能类别} & \textbf{功能说明} \\
 \midrule
@@ -326,11 +330,37 @@ Web 代理服务器位于客户端和目标 Web 服务器之间。客户端将�
 
 \section{核心功能原理、设计与实现}
 
+本系统的核心功能按照“解析请求、执行前置策略、访问目标服务器、检查返回内容、记录结果”的主线设计。实现时优先使用 Python 标准库提供的底层网络与数据处理能力：\code{socket} 负责 TCP 通信，\code{threading} 负责并发连接，\code{select} 负责 CONNECT 隧道双向转发，\code{gzip} 与 \code{zlib} 负责压缩正文检查，\code{json} 与文件日志负责配置持久化和审计。各功能共享同一请求信息对象和运行状态对象，使策略、缓存、日志及前端统计使用一致的数据来源。
+
 \subsection{HTTP 正向代理与请求转发原理}
+
+HTTP 正向代理模块负责完成客户端与目标服务器之间的通信闭环。该模块总体设计为四个阶段：接收并解析客户端代理请求、生成目标服务器能够理解的上游请求、通过 TCP Socket 收取完整响应、把响应交给正文过滤和客户端回传。代理不依赖现成代理框架，便于直接观察请求行、请求头和响应边界的处理过程。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.75cm,
+  flowbox/.style={draw, rounded corners=2pt, minimum width=9.4cm, minimum height=0.72cm, align=center},
+  arrow/.style={-{Latex[length=2mm]}, thick}
+]
+\node[flowbox] (a) {浏览器向代理发送绝对地址形式的 HTTP 请求};
+\node[flowbox, below=of a] (b) {解析方法、目标主机、端口、路径、请求头与请求体};
+\node[flowbox, below=of b] (c) {删除代理专用请求头并改写为上游路径请求};
+\node[flowbox, below=of c] (d) {使用 socket 连接目标服务器并发送请求};
+\node[flowbox, below=of d] (e) {按 Content-Length、chunked 或连接关闭判断响应完成};
+\node[flowbox, below=of e] (f) {交给正文过滤模块检查，再返回客户端并记录日志};
+\draw[arrow] (a)--(b);
+\draw[arrow] (b)--(c);
+\draw[arrow] (c)--(d);
+\draw[arrow] (d)--(e);
+\draw[arrow] (e)--(f);
+\end{tikzpicture}
+\caption{HTTP 正向代理请求转发流程}
+\end{figure}
 
 \subsubsection{代理请求解析}
 
-浏览器直连网站时，请求行通常采用 \code{GET /path HTTP/1.1} 的路径形式；使用 HTTP 代理时，请求行采用 \code{GET http://host/path HTTP/1.1} 的绝对地址形式。代理先分离请求行、请求头和请求体，再从绝对地址或 \code{Host} 头中解析目标主机、端口、路径和协议版本。若目标地址缺失或端口非法，代理在建立上游连接前终止处理，避免把不完整请求发送到网络。
+浏览器直连网站时，请求行通常采用 \code{GET /path} 的路径形式；使用 HTTP 代理时，请求行采用携带完整目标地址的绝对形式。实现中先使用字符串分割请求行、请求头和请求体，再使用 \code{urlsplit} 解析绝对地址，从中取得目标主机、端口、路径和协议版本。若目标地址缺失或端口非法，代理在建立上游连接前终止处理，避免把不完整请求发送到网络。
 
 解析结果统一保存为请求信息对象，后续域名策略、URL 关键词、缓存键和日志都读取该对象。这样可以避免每个功能重复解释原始报文，也使策略判断与转发使用同一目标信息。
 
@@ -340,11 +370,13 @@ Web 代理服务器位于客户端和目标 Web 服务器之间。客户端将�
 
 \subsubsection{上游连接与响应边界判定}
 
-代理使用 TCP Socket 连接目标主机和端口，发送改写后的请求，并按 HTTP 报文边界接收响应。响应声明 \code{Content-Length} 时，收到指定长度正文即可完成；使用 chunked 传输时，以 0 长度结束块和尾部空行作为结束；HEAD、204 和 304 等无正文响应在响应头接收完成后立即结束。只有响应没有长度信息时，才使用上游关闭连接作为结束标志。
+代理使用 \code{socket.create\_connection} 连接目标主机和端口，设置超时时间后发送改写请求，并按 HTTP 报文边界接收响应。响应声明 \code{Content-Length} 时，收到指定长度正文即可完成；使用 chunked 传输时，以 0 长度结束块和尾部空行作为结束；HEAD、204 和 304 等无正文响应在响应头接收完成后立即结束。只有响应没有长度信息时，才使用上游关闭连接作为结束标志。
 
 该设计解决了部分真实网站在完整响应发送后仍保持 TCP 连接的问题。若仍单纯等待连接关闭，代理会在正文已经到齐的情况下误判超时，正文过滤也无法执行。目标连接失败时系统返回 502，确实未收到完整响应且等待超时时返回 504。请求解析、改写、HTTP 边界接收和上游转发实现见\mbox{\hyperref[app:forward]{【A.1】}}。
 
 \subsection{访问控制策略链原理}
+
+访问控制模块采用前置检查与短路返回设计。每个策略函数只负责一种判断，并返回稳定的允许或拒绝结果；连接目标服务器之前依次执行这些函数，任一规则命中即停止后续处理。该设计把安全策略与网络转发解耦，新增规则组时只需在策略链中加入对应判断，同时日志能够精确记录拒绝发生的位置。
 
 \subsubsection{有序短路策略}
 
@@ -361,6 +393,33 @@ Web 代理服务器位于客户端和目标 Web 服务器之间。客户端将�
 客户端地址策略使用套接字源地址，并通过 \code{ipaddress} 判断单个 IP 或 CIDR 网段；黑名单优先于白名单。认证与限流位于目标策略之前，使未认证请求和超额请求不会继续访问外部网络。策略链、域名通配符、URL 判断和客户端地址处理实现见\mbox{\hyperref[app:policy]{【A.2】}}。
 
 \subsection{网页正文关键词过滤原理}
+
+正文过滤模块位于“上游响应接收”和“响应返回客户端”之间，总体流程为响应类型判断、传输与压缩还原、字符解码、关键词匹配和替代响应生成。该模块只处理代理能够读取的明文 HTTP 文本内容，并以本地可控测试页验证正文确实来自服务器响应而非请求 URL。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.68cm,
+  flowbox/.style={draw, rounded corners=2pt, minimum width=9.2cm, minimum height=0.68cm, align=center},
+  resultbox/.style={draw, rounded corners=2pt, text width=4.6cm, minimum height=0.68cm, align=center},
+  decision/.style={draw, diamond, aspect=3.4, align=center, inner sep=1.5pt},
+  arrow/.style={-{Latex[length=2mm]}, thick}
+]
+\node[flowbox] (a) {接收完整 HTTP 响应};
+\node[decision, below=of a] (b) {是否为可检查文本类型};
+\node[flowbox, below=of b] (c) {还原 chunked，解压 gzip/deflate，按字符集解码};
+\node[decision, below=of c] (d) {正文是否命中规则};
+\node[resultbox, below left=0.8cm and 0.45cm of d] (e) {返回原响应并记录 ALLOW};
+\node[resultbox, below right=0.8cm and 0.45cm of d] (f) {生成 403 替代页面并记录 FILTER};
+\draw[arrow] (a)--(b);
+\draw[arrow] (b)-- node[right]{是} (c);
+\draw[arrow] (b.east) -- ++(1.4,0) |- node[pos=0.25,right]{否} (e.east);
+\draw[arrow] (c)--(d);
+\draw[arrow] (d)-- node[left]{否} (e);
+\draw[arrow] (d)-- node[right]{是} (f);
+\end{tikzpicture}
+\caption{网页正文关键词过滤流程}
+\end{figure}
 
 \subsubsection{过滤位置与资源类型判断}
 
@@ -380,6 +439,8 @@ Web 代理服务器位于客户端和目标 Web 服务器之间。客户端将�
 
 \subsection{HTTPS CONNECT 隧道原理}
 
+HTTPS CONNECT 模块采用“先检查目标、再建立透明隧道”的设计。由于 TLS 加密发生在浏览器与目标网站之间，代理只处理 CONNECT 请求中的目标域名和端口，并在允许访问后使用 \code{select} 转发两端加密字节。该模块能够完成 HTTPS 转发与域名控制，同时保留对加密内容不可见的安全边界。
+
 \subsubsection{隧道建立}
 
 浏览器访问 HTTPS 网站时，先向代理发送 \code{CONNECT host:443}。代理解析目标域名和端口，并在建立隧道前执行域名等前置策略。目标允许访问时，代理连接目标服务器并向浏览器返回 \code{200 Connection Established}；目标被禁止时，代理拒绝 CONNECT，浏览器通常显示隧道连接失败。
@@ -393,6 +454,8 @@ Web 代理服务器位于客户端和目标 Web 服务器之间。客户端将�
 CONNECT 隧道不解密 TLS。代理能够看到目标域名和端口，因此可以执行 HTTPS 域名拦截；代理看不到 HTTPS 内部路径、查询参数和正文，因此不能执行 HTTPS URL 路径或正文关键词过滤。实现这些能力需要中间人证书、客户端信任和私钥保护机制，不属于本实验范围。CONNECT 建立与双向转发实现见\mbox{\hyperref[app:connect]{【A.4】}}。
 
 \subsection{缓存、认证与限流设计}
+
+缓存、认证和限流属于代理运行策略，分别解决重复请求性能、代理使用者身份和访问频率控制问题。三项功能都在运行状态对象中保存数据，并能够通过管理 API 或命令行即时调整。处理顺序为先认证、再限流、最后查询缓存，避免未授权或超额请求消耗上游资源。
 
 \subsubsection{HTTP GET 缓存}
 
@@ -410,6 +473,32 @@ CONNECT 隧道不解密 TLS。代理能够看到目标域名和端口，因此�
 
 \subsection{动态规则管理与并发一致性}
 
+动态规则管理采用“统一 API、内存立即生效、文件持续保存、变更全程留痕”的总体设计。前端与命令行工具只是不同的操作入口，最终都调用相同后端方法。代理线程读取共享运行状态，管理线程负责修改状态，二者使用互斥锁保证并发一致性。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=1.0cm and 1.2cm,
+  box/.style={draw, rounded corners=2pt, minimum width=3.4cm, minimum height=0.78cm, align=center},
+  arrow/.style={-{Latex[length=2mm]}, thick}
+]
+\node[box] (front) {管理前端};
+\node[box, right=of front] (cli) {命令行 rule\_cli.py};
+\node[box, below=of front, xshift=2.3cm] (api) {管理后端 JSON API};
+\node[box, below=of api] (state) {加锁更新共享运行状态};
+\node[box, below left=of state] (config) {写回 JSON 配置};
+\node[box, below right=of state] (change) {追加 JSONL 变更记录};
+\node[box, below=of state, yshift=-1.25cm] (proxy) {后续代理请求读取新规则};
+\draw[arrow] (front)--(api);
+\draw[arrow] (cli)--(api);
+\draw[arrow] (api)--(state);
+\draw[arrow] (state)--(config);
+\draw[arrow] (state)--(change);
+\draw[arrow] (state)--(proxy);
+\end{tikzpicture}
+\caption{动态规则修改与立即生效流程}
+\end{figure}
+
 \subsubsection{统一操作入口}
 
 规则可以通过管理前端、JSON API 或 \code{rule\_cli.py} 命令行工具修改。前端和命令行最终都调用管理 API，API 再调用运行状态对象中的同一组新增、删除、修改、查询和整组替换方法。因此不同入口具有相同校验规则和立即生效语义。
@@ -423,6 +512,8 @@ CONNECT 隧道不解密 TLS。代理能够看到目标域名和端口，因此�
 规则、统计、缓存和限流计数由运行状态对象统一管理，写操作在互斥锁内完成，避免代理线程和管理线程并发修改共享数据。正文规则变化时同步清空缓存，限流参数变化时同步重置计数桶，使关联状态与新配置保持一致。规则管理、缓存清理和变更记录实现见\mbox{\hyperref[app:rules]{【A.6】}}。
 
 \subsection{日志审计与管理前端设计}
+
+日志与管理前端采用“代理产生事件、后端结构化查询、前端分类展示”的设计。代理在每个关键分支记录事件类型和原因，管理后端把文本日志解析为结构化字段，再向前端提供统计、筛选、详情和 CSV 导出接口。当前运行日志与批量验收证据分开保存，使现场操作和自动测试都能独立展示。
 
 \subsubsection{事件模型与分类存储}
 
@@ -468,16 +559,26 @@ python tests\run_all_smoke.py
 
 \screenshotfigure{batch_rules.png}{规则与运行模式批量验证结果}{PowerShell 中显示 PASSED batch: rule groups and runtime modes 和 Passed tests: 7/7}
 
+图中两个批次分别显示 \code{15/15} 和 \code{7/7}，并最终输出 \code{all test batches passed}。该结果说明代理转发、访问控制、正文过滤、CONNECT、缓存、认证、限流以及规则运行时修改均通过断言；批次使用独立配置和端口，多次执行不会依赖正式配置中的规则状态，因此结果具有可重复性。
+
 \screenshotfigure{batch-dashboard-web.png}{Web 批量验收结果在管理首页中的展示}{管理首页选择“最近验收”后的总请求、总拦截、各类拦截统计和证据数量}
 
 \screenshotfigure{batch-dashboard-rules.png}{规则批量验收变更总览}{批量验收规则变更页面中的操作汇总、规则组汇总和变更详情}
 
+管理首页能够读取批量测试保存的证据并恢复总请求、总拦截和分类统计，规则变更总览能够展示新增、删除、更新和运行设置变化。两张图说明自动测试不仅判断命令执行成功，还留下了能够由管理前端查询的行为证据，测试结果与展示层数据保持一致。
+
 \subsection{手工验收准备}
 
-手工验收用于观察浏览器页面、命令行状态码、管理前端统计和日志之间是否一致。URL 关键词和正文关键词使用真实明文 HTTP 网站，因为普通 CONNECT 代理无法读取 HTTPS 路径和正文。验收前启动代理：
+手工验收用于观察浏览器页面、命令行状态码、管理前端统计和日志之间是否一致。域名和 URL 规则使用真实网站验证，正文过滤使用项目自带的可控 HTTP 测试页验证，避免公网网站跳转、压缩方式和网络状态变化影响实验结果。验收前启动代理：
 
 \begin{lstlisting}[numbers=none,language={}]
 python src\proxy.py --config config.example.json
+\end{lstlisting}
+
+正文过滤与缓存验收需要在另一个终端启动本地测试服务器：
+
+\begin{lstlisting}[numbers=none,language={}]
+python tests\manual_demo_server.py
 \end{lstlisting}
 
 验收浏览器可使用系统代理，也可以使用项目提供的独立配置。独立浏览器关闭自动 HTTPS 升级并降低浏览器缓存干扰：
@@ -501,6 +602,8 @@ python tools\rule_cli.py rate-reset
 
 \screenshotfigure{manual-domain-bing-normal.png}{真实 HTTPS 网站通过代理正常访问}{Edge 正常显示 Bing 页面，并显示浏览器正在使用代理}
 
+图中 Bing 页面能够正常加载，说明浏览器已经通过代理建立 CONNECT 隧道，代理能够连接真实目标服务器并双向转发 TLS 加密字节。该结果证明基础转发链路正常，也为后续添加域名黑名单后的对照实验提供了基准。
+
 \subsection{真实网站域名拦截验收}
 
 添加 Bing 子域名黑名单并访问真实 HTTPS 网站：
@@ -519,6 +622,8 @@ python tools\rule_cli.py delete blocked_domains *.bing.com
 
 \screenshotfigure{manual-domain-bing-log.png}{真实 HTTPS 域名拦截日志}{当前运行拦截日志中的 host=www.bing.com 与 reason=domain\_blacklist}
 
+浏览器在添加规则后显示隧道连接失败，而拦截日志明确记录目标主机为 \code{www.bing.com}、原因为 \code{domain\_blacklist}。结合添加规则前能够正常访问的对照结果，可以确认失败由代理域名策略主动拒绝 CONNECT 引起，并非网站或网络临时不可用。该结果同时说明 HTTPS 场景下代理能够依据 CONNECT 目标域名实施控制，但浏览器不会渲染代理的普通 403 页面。
+
 \subsection{真实网站 URL 关键词验收}
 
 URL 关键词验收使用真实明文 HTTP 地址 \code{http://httpforever.com/url-filter-demo}。该路径包含稳定关键词 \code{url-filter-demo}，代理在连接目标网站之前即可完成判断：
@@ -536,24 +641,27 @@ python tools\rule_cli.py delete blocked_url_keywords url-filter-demo
 
 \screenshotfigure{manual-url-httpforever.png}{真实网站 URL 关键词拦截结果}{Edge 地址栏中的 http://httpforever.com/url-filter-demo，403 拦截页，以及展开后的 url\_keyword:url-filter-demo}
 
-\subsection{真实网站正文关键词验收}
+图中地址栏保留了包含 \code{url-filter-demo} 的完整 HTTP 地址，页面被替换为代理生成的 403 提示，详细信息显示 \code{url\_keyword:url-filter-demo}。该结果说明代理能够在连接目标服务器之前读取明文 HTTP 请求路径并完成 URL 关键词判断；命中规则后没有继续访问目标页面，拦截原因能够直接反馈给使用者。
 
-正文关键词验收使用真实明文 HTTP 网站 \code{http://neverssl.com/}。该网站首页正文包含 \code{NeverSSL}，代理连接网站并收到响应后才能判断正文是否命中。验收前清空代理缓存，查询参数用于避免 Edge 使用浏览器自身缓存：
+\subsection{本地可控网页正文关键词验收}
+
+正文关键词验收使用项目测试服务器提供的地址 \url{http://127.0.0.1.nip.io:9000/content-test.html}。该 URL 本身不包含关键词 \code{forbidden}，关键词只存在于服务器返回的 HTML 正文中，因此能够区分 URL 拦截和正文过滤。使用 \code{127.0.0.1.nip.io} 访问本机服务，可以避免 Chromium 默认绕过本机代理。验收前清空代理缓存并添加正文规则：
 
 \begin{lstlisting}[numbers=none,language={}]
 python tools\rule_cli.py cache-clear
-python tools\rule_cli.py delete blocked_domains neverssl.com
-python tools\rule_cli.py delete blocked_url_keywords neverssl
-python tools\rule_cli.py add blocked_content_keywords NeverSSL
+python tools\rule_cli.py delete blocked_url_keywords forbidden
+python tools\rule_cli.py add blocked_content_keywords forbidden
 \end{lstlisting}
 
-在专用 Edge 中输入完整地址 \code{http://neverssl.com/?proxy-lab=content-check}。预期原网页正文被代理生成的 403 页面替代，详细信息中的拦截原因为 \code{content_keyword:NeverSSL}。验收结束后删除规则：
+在专用 Edge 中输入上述完整地址。预期原网页正文被代理生成的 403 页面替代，详细信息显示命中规则 \code{forbidden}，原因类型为正文关键词拦截。验收结束后删除规则：
 
 \begin{lstlisting}[numbers=none,language={}]
-python tools\rule_cli.py delete blocked_content_keywords NeverSSL
+python tools\rule_cli.py delete blocked_content_keywords forbidden
 \end{lstlisting}
 
-\screenshotfigure{manual-content-neverssl.png}{真实网站正文关键词过滤结果}{Edge 地址栏中的 http://neverssl.com/?proxy-lab=content-check，正文过滤后的 403 页面，以及展开后的 content\_keyword:NeverSSL}
+\screenshotfigure{manual-content-forbiden.png}{本地可控网页正文关键词过滤结果}{Edge 地址栏中的 http://127.0.0.1.nip.io:9000/content-test.html，正文过滤后的 403 页面，以及展开后的 content\_keyword:forbidden}
+
+图中目标地址为 \code{127.0.0.1.nip.io/content-test.html}，地址本身不含 \code{forbidden}，但代理页面显示命中规则和原因为 \code{content\_keyword:forbidden}。这说明请求已通过 URL 前置策略并到达测试服务器，代理在收到响应正文后才发现关键词，随后丢弃原网页并返回 403 替代页面。该结果直接证明了正文过滤模块的处理位置和功能有效性。
 
 \subsection{缓存、认证与限流验收}
 
@@ -566,15 +674,21 @@ python tools\rule_cli.py cache-clear
 
 \screenshotfigure{manual-cache-log.png}{HTTP GET 缓存验收日志}{同一目标先出现 CACHE\_MISS 和 ALLOW，随后出现 CACHE\_HIT}
 
+缓存日志中，同一目标第一次访问产生 \code{CACHE\_MISS} 和 \code{ALLOW}，第二次产生 \code{CACHE\_HIT}；在 TTL 有效期内，测试页的 \code{upstream-hit} 不再增加。该结果说明第二次响应由代理内存缓存直接提供，没有再次连接上游测试服务器。若浏览器每次刷新都使 \code{upstream-hit} 增加，则表示请求未命中代理缓存，不能作为缓存成功的证据。
+
 代理认证验收启用 Basic 认证。无凭据或错误凭据请求在协议层返回 407，浏览器可能弹出认证对话框，也可能直接显示连接失败，不保证显示代理生成的 407 页面。管理日志中的 \code{AUTH\_REQUIRED} 用于确认认证拒绝，正确凭据请求能够继续访问，且 \code{Proxy-Authorization} 不转发给目标网站。
 
 \screenshotfigure{manual-auth.png}{代理认证验收日志}{当前运行日志中的 AUTH\_REQUIRED，以及认证关闭或凭据正确后的正常 CONNECT 记录}
+
+认证日志中的 \code{AUTH\_REQUIRED} 表明代理在访问目标网站之前识别出缺失或错误凭据并终止请求；随后出现的正常 CONNECT 记录说明关闭认证或提供正确凭据后请求能够继续。浏览器是否显示 407 页面属于客户端表现，日志和协议响应能够证明认证模块已经执行。
 
 限流验收将窗口内请求上限设为 1，并在测试前重置计数。第一次请求记录 \code{RATE_ALLOW}，第二次请求返回 429 并记录 \code{RATE_LIMIT}。浏览器会产生附加资源请求，因此浏览器页面可能在主请求放行后很快出现限流失败；命令行连续请求能更准确展示第一次放行、第二次拒绝。
 
 \screenshotfigure{rate-limit.png}{浏览器访问频率限制结果}{浏览器在代理限流开启后出现访问失败}
 
 \screenshotfigure{rate-limit-log.png}{访问频率限制日志}{当前运行拦截日志中的 RATE\_LIMIT、count、limit 和 retry\_after}
+
+浏览器页面显示访问失败，日志同时给出 \code{RATE\_LIMIT}、当前计数、限制值和剩余等待时间。两项证据说明代理按照客户端 IP 维护固定时间窗口，并在额度耗尽后于访问目标网站之前拒绝后续请求。浏览器会并发请求页面资源，因此限流演示应结合日志判断具体被拒绝的请求。
 
 \subsection{日志、统计与规则变更验收}
 
@@ -584,13 +698,15 @@ python tools\rule_cli.py cache-clear
 
 \screenshotfigure{manual-rule-changes.png}{当前运行规则变更记录}{规则变更总览选择“当前运行”，显示手工新增、修改、删除规则和运行设置操作}
 
+拦截日志详情页能够按事件类型和关键词查询前述域名、URL、正文、认证与限流事件；规则变更总览能够显示手工验收过程中执行的新增、删除和设置操作。该结果说明系统不仅执行访问控制，还能够将请求处理结果与规则修改过程分别留痕，为故障定位和实验复核提供完整依据。
+
 \subsection{测试结果分析}
 
 两组批量测试最终分别通过 15/15 和 7/7，说明代理转发、访问控制、正文过滤、CONNECT、缓存、认证、限流、客户端地址策略、动态规则管理、前端统计和审计证据能够在独立环境中重复执行。浏览器端回归测试曾因统计字段名称写错而在完成 13 项后失败，修正为实际字段 \code{filtered_keyword} 后完整批次通过；该过程说明测试脚本本身也需要接受回归检查。
 
-真实网站手工验收体现了 HTTP 与 HTTPS 的可见性差异。明文 HTTP URL 规则能够在建立上游连接前返回带原因的 403 页面，正文规则能够在接收响应后替换原网页；HTTPS 域名拦截发生在 CONNECT 阶段，Edge 将其显示为隧道连接失败，具体 403 原因需要结合代理日志确认。
+手工验收体现了 HTTP 与 HTTPS 的可见性差异。明文 HTTP URL 规则能够在建立上游连接前返回带原因的 403 页面，本地可控正文规则能够在接收响应后替换原网页；HTTPS 域名拦截发生在 CONNECT 阶段，Edge 将其显示为隧道连接失败，具体拒绝原因需要结合代理日志确认。每项手工验收均同时观察浏览器结果和日志记录，能够排除单纯页面加载失败造成的误判。
 
-正文过滤故障排查发现，旧实现等待目标服务器关闭 TCP 连接后才处理响应。NeverSSL 在完整正文发送后保持连接，代理因此等待至超时并记录 504，正文并未进入关键词匹配。修复后，代理按照 \code{Content-Length}、chunked 结束块和无正文状态判断响应完成，并增加 gzip、deflate、chunked 与 GB18030 测试；正文规则变化仍会清空旧缓存，缓存命中也会按照当前规则重新检查。限流日志表明浏览器后台连接会共同消耗同一客户端 IP 的额度，因此现场演示其他模块前应关闭限流，单独验收限流时再启用并重置计数。
+正文过滤故障排查发现，响应接收不能只依赖目标服务器关闭 TCP 连接。修复后，代理按照 \code{Content-Length}、chunked 结束块和无正文状态判断响应完成，并增加保持连接、gzip、deflate、chunked 与 GB18030 测试；正文规则变化仍会清空旧缓存，缓存命中也会按照当前规则重新检查。本地测试页提供稳定正文和明确关键词，使现场验收不再受公网网站行为变化影响。限流日志表明浏览器后台连接会共同消耗同一客户端 IP 的额度，因此现场演示其他模块前应关闭限流，单独验收限流时再启用并重置计数。
 
 \section{项目开发总结}
 
@@ -598,7 +714,7 @@ python tools\rule_cli.py cache-clear
 
 本项目完成了题目规定的 Web 请求转发、指定域名拦截和网页关键词过滤功能。代理能够解析 HTTP 代理请求并连接目标服务器，能够在连接目标服务器之前执行域名、URL、方法和客户端地址策略，也能够在收到明文 HTTP 响应后执行正文关键词过滤。
 
-在基础功能之上，项目实现了 HTTPS CONNECT、GET 缓存、代理认证、访问频率限制、黑白名单模式、动态规则管理、管理前端、统计与日志审计。规则可以通过前端、API 和命令行修改，并立即作用于后续请求。自动测试与真实外网手工验收能够从响应、日志、统计和规则变更多个角度说明功能结果。
+在基础功能之上，项目实现了 HTTPS CONNECT、GET 缓存、代理认证、访问频率限制、黑白名单模式、动态规则管理、管理前端、统计与日志审计。规则可以通过前端、API 和命令行修改，并立即作用于后续请求。自动测试与浏览器手工验收能够从响应、日志、统计和规则变更多个角度说明功能结果。
 
 \subsection{存在问题与改进方向}
 
@@ -610,7 +726,13 @@ python tools\rule_cli.py cache-clear
 
 本项目的主要收获是将 HTTP 协议、TCP Socket 和访问控制策略结合成一个可以实际运行的系统。实现代理转发后，可以直接观察浏览器请求经过代理、被改写、转发并返回的过程；实现域名与正文过滤后，可以区分“请求发送前拒绝”和“收到响应后过滤”两种处理位置。
 
-开发过程中，浏览器对本机地址的代理绕过、HTTPS CONNECT 的加密边界、PowerShell 与 CMD 的 JSON 引号差异，以及限流对浏览器附加请求的影响，都说明网络程序的验证需要结合协议行为和运行环境。通过为每个模块设计独立测试、日志原因和恢复命令，项目最终形成了可重复验证的完整实验流程。
+开发过程中，对协议边界的理解比单纯完成代码更加重要。普通 HTTP 请求的路径和正文对代理可见，因此可以进行 URL 和内容检查；HTTPS 经过 CONNECT 建立 TLS 隧道后，代理只能依据目标域名进行控制。浏览器显示的隧道失败、认证提示或页面加载失败不能单独说明具体原因，必须结合代理记录的稳定原因字段进行判断。这个过程加深了我对“网络现象”和“程序内部处理结果”之间关系的理解。
+
+项目调试也让我认识到真实网络环境会给实验带来许多额外变量。浏览器可能绕过本机代理、缓存页面、并发请求附加资源，公网网站可能跳转、压缩正文或保持 TCP 连接。正文过滤曾因响应已经接收完成但服务器未立即关闭连接而超时，最终通过按照 \code{Content-Length} 和 chunked 边界判断响应完整性解决。缓存验收则需要同时观察 \code{CACHE\_HIT} 日志和上游访问计数，才能确认响应确实来自代理缓存。这些问题促使我把每项功能设计成可独立复现、可从日志解释的实验模块。
+
+在工程组织方面，项目从单纯命令行代理逐步扩展为包含管理后端、前端页面、规则命令行工具、结构化日志和批量测试的完整系统。规则修改通过统一 API 进入共享状态，并同时保存到配置文件和变更记录；批量测试使用独立证据目录，避免影响手工验收数据。通过这一过程，我体会到完整项目不仅需要实现功能，还需要考虑如何配置、如何验证、如何展示以及发生问题后如何定位。
+
+本次课程设计使我对 Socket 编程、HTTP 报文、正向代理、访问控制和日志审计形成了更连贯的认识。后续若继续完善，我希望进一步研究流式正文过滤、SQLite 审计存储和受控环境中的 HTTPS 内容检查，并在实现新能力时继续保留明确的安全边界和可验证证据。
 
 \section*{参考文献}
 \addcontentsline{toc}{section}{参考文献}
@@ -625,47 +747,35 @@ python tools\rule_cli.py cache-clear
 \end{enumerate}
 
 \appendix
-\section{关键源代码（带注释）}
+\section{关键源代码}
 
-正文重点说明功能原理与设计。本附录列出与核心原理对应的实际项目代码，代码中的注释用于说明关键判断和安全边界。
+正文重点说明功能原理与设计。本附录仅列出各核心模块最有代表性的实现片段，完整代码见首页所列项目仓库。
 
 \subsection{HTTP 请求解析、改写与转发}
 \label{app:forward}
 
 \lstinputlisting[
-  firstline=615,
-  lastline=675,
-  caption={HTTP 代理请求解析}
-]{../src/proxy.py}
-
-\lstinputlisting[
-  firstline=958,
-  lastline=1013,
-  caption={HTTP 响应边界判断与完整接收}
-]{../src/proxy.py}
-
-\lstinputlisting[
-  firstline=1095,
-  lastline=1179,
-  caption={上游请求改写、连接和响应转发}
+  firstline=1130,
+  lastline=1162,
+  caption={普通 HTTP 请求转发主流程}
 ]{../src/proxy.py}
 
 \subsection{访问控制策略判定}
 \label{app:policy}
 
 \lstinputlisting[
-  firstline=780,
-  lastline=857,
-  caption={域名、客户端 IP/CIDR 与目标访问策略}
+  firstline=830,
+  lastline=856,
+  caption={方法、域名与 URL 访问策略}
 ]{../src/proxy.py}
 
 \subsection{HTTP 明文正文关键词过滤}
 \label{app:content}
 
 \lstinputlisting[
-  firstline=913,
-  lastline=1083,
-  caption={分块还原、压缩解码、字符集处理与正文关键词过滤}
+  firstline=1038,
+  lastline=1082,
+  caption={正文类型判断、压缩解码与关键词过滤}
 ]{../src/proxy.py}
 
 \subsection{HTTPS CONNECT 双向隧道}
@@ -673,7 +783,7 @@ python tools\rule_cli.py cache-clear
 
 \lstinputlisting[
   firstline=1181,
-  lastline=1264,
+  lastline=1237,
   caption={HTTPS CONNECT 隧道双向转发}
 ]{../src/proxy.py}
 
@@ -682,13 +792,13 @@ python tools\rule_cli.py cache-clear
 
 \lstinputlisting[
   firstline=472,
-  lastline=512,
+  lastline=507,
   caption={GET 缓存与客户端限流桶}
 ]{../src/proxy.py}
 
 \lstinputlisting[
   firstline=859,
-  lastline=879,
+  lastline=878,
   caption={Proxy-Authorization Basic 代理认证}
 ]{../src/proxy.py}
 
@@ -696,47 +806,18 @@ python tools\rule_cli.py cache-clear
 \label{app:rules}
 
 \lstinputlisting[
-  firstline=216,
+  firstline=242,
   lastline=277,
-  caption={规则变更记录、正文规则缓存清理与新增操作}
+  caption={正文规则缓存清理与规则新增操作}
 ]{../src/proxy.py}
 
-\subsection{日志查询与 CSV 审计导出}
+\subsection{日志分类写入与结构化解析}
 \label{app:audit}
 
 \lstinputlisting[
   firstline=45,
-  lastline=164,
-  caption={日志写入、结构化查询与 CSV 导出}
+  lastline=92,
+  caption={日志分类写入与结构化解析}
 ]{../src/webproxy/audit.py}
-
-\subsection{客户端连接的有序处理总入口}
-\label{app:handler}
-
-\lstinputlisting[
-  firstline=1278,
-  lastline=1511,
-  caption={认证、限流、策略、缓存、转发与日志处理顺序}
-]{../src/proxy.py}
-
-\section{常用运行与验收命令}
-
-\begin{longtable}{p{0.48\textwidth}p{0.42\textwidth}}
-\toprule
-\textbf{命令} & \textbf{用途} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{命令} & \textbf{用途} \\
-\midrule
-\endhead
-\code{python src\proxy.py --config config.example.json} & 启动代理服务和管理前端。 \\
-\code{python tests\run_all_smoke.py} & 运行完整自动回归测试。 \\
-\code{python tools\rule_cli.py list} & 查询所有规则组。 \\
-\code{python tools\rule_cli.py config} & 查询当前运行配置。 \\
-\code{python tools\rule_cli.py changes --limit 20} & 查询最近规则变更。 \\
-\code{python tools\rule_cli.py log-query --kind blocked --limit 20} & 查询最近拦截日志。 \\
-\bottomrule
-\end{longtable}
 
 \end{document}
