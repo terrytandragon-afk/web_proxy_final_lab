@@ -5,9 +5,9 @@
   "admin_port": 8088,
   "mode": "blacklist",
   "blocked_domains": [
+    "*.badsite.test",
     "blocked.test",
-    "example-blocked.com",
-    "*.badsite.test"
+    "example-blocked.com"
   ],
   "allowed_domains": [
     "127.0.0.1",
@@ -16,12 +16,21 @@
   ],
   "blocked_client_ips": [],
   "allowed_client_ips": [],
-  "blocked_url_keywords": [],
-  "blocked_content_keywords": [
+  "blocked_url_keywords": [
     "forbidden",
+    "game",
+    "search",
+    "item",
+    "url-filter-demo"
+  ],
+  "blocked_content_keywords": [
     "attack",
     "virus",
-    "secret"
+    "secret",
+    "baidu",
+    "NeverSSL",
+    "game",
+    "forbidden"
   ],
   "replace_keywords": {
     "advertisement": "***"
@@ -35,12 +44,12 @@
   "cache_enabled": true,
   "cache_ttl_seconds": 60,
   "cache_max_items": 100,
-  "proxy_auth_enabled": false,
+  "proxy_auth_enabled": true,
   "proxy_auth_users": {
     "student": "123456"
   },
   "rate_limit_enabled": false,
-  "rate_limit_per_minute": 60,
+  "rate_limit_per_minute": 20,
   "rate_limit_window_seconds": 60,
   "log_file": "logs/proxy.log",
   "blocked_log_file": "logs/blocked.log",
