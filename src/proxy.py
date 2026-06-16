@@ -662,18 +662,22 @@ class RuntimeState:
             max_items: 最多缓存条目数。
         """
         if ttl_seconds <= 0 or max_items <= 0:
+            # ttl 或最大条目数为 0 时，相当于不启用缓存。
             return
         with self.lock:
             while max_items > 0 and len(self.cache) >= max_items:
+                # 缓存满了就删除创建时间最早的条目，保持缓存数量不超过配置上限。
                 oldest_key = min(
                     self.cache,
                     key=lambda item: self.cache[item]["created_at"],
                 )
                 del self.cache[oldest_key]
+            # 保存的是原始 HTTP 响应字节，而不是过滤后的结果。
             self.cache[key] = {
                 "response_bytes": response_bytes,
                 "status_code": status_code,
                 "created_at": time.time(),
+                # expires_at 是绝对过期时间，get_cache() 会用当前时间和它比较。
                 "expires_at": time.time() + ttl_seconds,
             }
 
@@ -692,16 +696,20 @@ class RuntimeState:
             return True, 0, 0
         now = time.time()
         with self.lock:
+            # 每个客户端 IP 一个 bucket，记录当前窗口访问次数和窗口重置时间。
             bucket = self.rate_limits.get(client_ip)
             if not bucket or now >= bucket["reset_at"]:
+                # 第一次访问，或者旧窗口已经过期：创建新窗口，当前请求计为第 1 次。
                 self.rate_limits[client_ip] = {
                     "count": 1,
                     "reset_at": now + window_seconds,
                 }
                 return True, 0, 1
             if bucket["count"] >= max_requests:
+                # 当前窗口访问次数已经达到上限，返回 False 和剩余等待时间。
                 retry_after = max(1, int(bucket["reset_at"] - now))
                 return False, retry_after, bucket["count"]
+            # 未达到上限，计数加 1 后放行。
             bucket["count"] += 1
             return True, 0, bucket["count"]
 
@@ -885,15 +893,21 @@ def parse_http_request(request_text):
     Raises:
         ValueError: 请求为空、请求行格式错误、Host 缺失或目标主机缺失。
     """
+    # splitlines() 把整段 HTTP 请求按行拆开：
+    # 第 0 行是请求行，例如 "GET http://example.com/ HTTP/1.1"；
+    # 后面的行是请求头，例如 "Host: example.com"。
     lines = request_text.splitlines()
     if not lines:
         raise ValueError("empty request")
 
+    # 请求行必须拆成三段：方法、目标、HTTP 版本。
+    # 例如：method=GET，target=http://example.com/，version=HTTP/1.1。
     parts = lines[0].split()
     if len(parts) != 3:
         raise ValueError(f"invalid request line: {lines[0]}")
 
     method, target, version = parts
+    # Host 头保存目标主机名。普通格式请求没有完整 URL 时，就要靠 Host 头判断访问谁。
     host_header = find_header(lines[1:], "Host")
 
     if method.upper() == "CONNECT":
@@ -902,6 +916,7 @@ def parse_http_request(request_text):
         if not host_part and host_header:
             host_part = host_header
         if ":" in host_part:
+            # CONNECT 目标通常写成 "example.com:443"，rsplit 从右边拆出端口。
             host, port_text = host_part.rsplit(":", 1)
             port = int(port_text)
         else:
@@ -911,6 +926,7 @@ def parse_http_request(request_text):
     elif target.startswith("http://"):
         # 代理格式的明文 HTTP 请求：请求行里带完整 URL，需要改写后再发给真实服务器。
         parsed = urlsplit(target)
+        # urlsplit 会把完整 URL 拆成 hostname、port、path、query 等结构。
         host = parsed.hostname
         port = parsed.port or 80
         path = parsed.path or "/"
@@ -922,6 +938,7 @@ def parse_http_request(request_text):
             raise ValueError("missing Host header")
         host_part = host_header
         if ":" in host_part:
+            # Host 头也可能带端口，例如 "127.0.0.1:9000"。
             host, port_text = host_part.rsplit(":", 1)
             port = int(port_text)
         else:
@@ -932,6 +949,7 @@ def parse_http_request(request_text):
     if not host:
         raise ValueError("missing target host")
 
+    # 返回统一结构后，后续过滤和转发代码就不用关心原请求是哪种写法。
     return {
         "method": method.upper(),
         "target": target,
@@ -941,6 +959,7 @@ def parse_http_request(request_text):
         "path": path,
         "host_header": host_header,
         "headers": {
+            # 把请求头名称统一转成小写，后面查 proxy-authorization 等字段更方便。
             line.split(":", 1)[0].strip().lower(): line.split(":", 1)[1].strip()
             for line in lines[1:]
             if ":" in line
@@ -1199,27 +1218,35 @@ def check_access_policy(request_info, config):
     method = request_info["method"]
     path = request_info["path"]
     target = request_info["target"]
+    # mode 控制域名规则模式：
+    # blacklist 表示黑名单命中才拦；whitelist 表示只有白名单命中才放行。
     mode = config.get("mode", "blacklist").lower()
 
+    # blocked_methods 是配置中的“禁止 HTTP 方法”列表。
+    # 统一转大写后，GET/get/Get 都能按同一种方式比较。
     blocked_methods = [item.upper() for item in config.get("blocked_methods", [])]
     if method in blocked_methods:
+        # 返回 False 表示不允许继续访问；reason 会被 handle_client 用来生成日志和 403 页面。
         return False, "method_blacklist"
 
     if mode == "whitelist":
         # 白名单模式下，不在 allowed_domains 中的目标一律拒绝。
         allowed_domains = config.get("allowed_domains", [])
         if not domain_matches(host, allowed_domains):
+            # domain_matches(host, allowed_domains) 为 False，说明当前目标域名不在白名单内。
             return False, "domain_not_in_whitelist"
 
     # 黑名单检查在白名单之后执行；如果二者都配置，黑名单仍可进一步收紧访问范围。
     blocked_domains = config.get("blocked_domains", [])
     if domain_matches(host, blocked_domains):
+        # 目标 host 命中 blocked_domains，直接拒绝，不再连接目标服务器。
         return False, "domain_blacklist"
 
     # 明文 HTTP 可以看到完整路径和查询参数，因此能拦 /game/index.html 这类 URL 片段。
     # HTTPS 的具体路径在 TLS 内部，代理不解密，只能看到 CONNECT 目标域名。
     searchable_url = f"{host}{path} {target}".lower()
     for keyword in config.get("blocked_url_keywords", []):
+        # blocked_url_keywords 是简单包含匹配；例如 keyword=game 可命中 /game/index.html。
         if keyword.lower() in searchable_url:
             return False, f"url_keyword:{keyword}"
 
@@ -1240,13 +1267,17 @@ def check_proxy_auth(request_info, config):
         bool: 认证关闭或用户名密码正确时返回 True，否则返回 False。
     """
     if not config.get("proxy_auth_enabled", False):
+        # 配置未开启代理认证时，任何请求都视为认证通过。
         return True
 
     users = config.get("proxy_auth_users", {})
+    # 请求头在 parse_http_request() 中已经转为小写键，所以这里查 proxy-authorization。
     auth_header = request_info.get("headers", {}).get("proxy-authorization", "")
     if not auth_header.lower().startswith("basic "):
+        # 没带 Basic 认证头，或者认证方式不是 Basic，直接认证失败。
         return False
 
+    # Basic 认证格式为：Proxy-Authorization: Basic base64(username:password)
     token = auth_header.split(None, 1)[1].strip()
     try:
         decoded = base64.b64decode(token).decode("utf-8")
@@ -1256,6 +1287,8 @@ def check_proxy_auth(request_info, config):
     if ":" not in decoded:
         return False
     username, password = decoded.split(":", 1)
+    # users 是配置里的用户表，形式为 {"用户名": "密码"}。
+    # 只有用户名存在且密码完全一致，才算认证通过。
     return users.get(username) == password
 
 
@@ -1545,17 +1578,21 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
         未命中时返回原响应和 None。
     """
     if b"\r\n\r\n" not in response_bytes:
+        # HTTP 响应头和响应体之间必须有空行；没有空行说明响应不完整或格式异常。
         return response_bytes, None
 
+    # header_bytes 是响应头，body 是真正的网页正文或资源内容。
     header_bytes, body = response_bytes.split(b"\r\n\r\n", 1)
     header_text = header_bytes.decode("iso-8859-1", errors="replace")
     header_lines = header_text.splitlines()
 
+    # 这三个响应头决定“能不能看正文”和“正文要不要先解码”。
     content_type = response_header_value(header_lines, "Content-Type")
     content_encoding = response_header_value(header_lines, "Content-Encoding")
     transfer_encoding = response_header_value(header_lines, "Transfer-Encoding")
 
     if not is_text_content_type(content_type):
+        # 图片、视频、压缩包等二进制内容不做关键词扫描，避免误解码破坏文件。
         return response_bytes, None
 
     # chunked 是 HTTP 分块传输编码；关键词检查时需要把多个 chunk 还原成连续正文。
@@ -1571,12 +1608,15 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
             # 未支持的压缩格式保持原响应，避免破坏客户端可用内容。
             return response_bytes, None
     except (OSError, zlib.error):
+        # 解压失败时选择放行原响应，避免因为格式兼容问题导致正常页面不可访问。
         return response_bytes, None
 
+    # inspection_body 是可读的正文原始字节；decode_text_body 把它变成 Python 字符串。
     body_text = decode_text_body(inspection_body, content_type)
     body_text_lower = body_text.lower()
 
     for keyword in config.get("blocked_content_keywords", []):
+        # 正文关键词匹配不区分大小写：正文和规则都转成 lower() 后比较。
         if keyword.lower() in body_text_lower:
             # 返回的不是原服务器响应，而是本代理生成的 403 拦截页；
             # 浏览器中看到的“详细信息”也来自这里。
@@ -1634,7 +1674,11 @@ def build_upstream_request(request_text, request_info):
     Returns:
         bytes: 可直接发给目标 Web 服务器的普通 HTTP 请求字节。
     """
+    # split_request() 把客户端原始请求拆成“请求头行列表”和“请求体”。
+    # GET 通常没有 body，POST 等方法可能带 body。
     header_lines, body = split_request(request_text)
+    # upstream_lines 是即将发给真实 Web 服务器的请求头。
+    # 第一行必须从代理格式 URL 改成普通 path，例如 /index.html。
     upstream_lines = [
         f"{request_info['method']} {request_info['path']} {request_info['version']}",
         f"Host: {request_info['host']}:{request_info['port']}"
@@ -1657,6 +1701,7 @@ def build_upstream_request(request_text, request_info):
             continue
         header_name = line.split(":", 1)[0].strip().lower()
         if header_name in skipped_headers:
+            # 这些头要么已经重写过，要么只给代理使用，不能继续传给目标网站。
             continue
         upstream_lines.append(line)
 
@@ -1687,21 +1732,27 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
         dict: 转发结果，包含 outcome、status_code、bytes_sent，
         成功时还可能包含 response_bytes，正文过滤时包含 keyword。
     """
+    # 先把浏览器发给代理的请求改写成目标服务器能理解的普通 HTTP 请求。
     upstream_request = build_upstream_request(request_text, request_info)
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
 
     try:
+        # upstream_socket 是代理到“真实目标服务器”的连接。
+        # request_info["host"] 和 request_info["port"] 来自 parse_http_request()。
         with socket.create_connection(
             (request_info["host"], request_info["port"]),
             timeout=timeout,
         ) as upstream_socket:
             upstream_socket.settimeout(timeout)
+            # 把改写后的请求发给真实 Web 服务器。
             upstream_socket.sendall(upstream_request)
 
             # 按 Content-Length/chunked 等 HTTP 边界接收；不能只等待 TCP 关闭，
             # 否则 NeverSSL 等保持连接的网站会在正文已到齐后仍被误判为 504。
             response_bytes = receive_http_response(upstream_socket, request_info["method"])
+            # status_code 主要用于日志和缓存判断。
             status_code = parse_status_code(response_bytes)
+            # 正文过滤在这里发生：如果命中关键词，response_bytes 会被替换成 403 拦截页。
             response_bytes, blocked_keyword = filter_response_content(
                 response_bytes,
                 config,
@@ -1710,8 +1761,10 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
             )
             if blocked_keyword:
                 status_code = 403
+            # 把最终响应发回客户端：可能是目标网站原响应，也可能是代理生成的 403 页面。
             client_socket.sendall(response_bytes)
             return {
+                # outcome 告诉 handle_client 后续应该计入“放行”还是“正文过滤”。
                 "outcome": "filtered" if blocked_keyword else "allowed",
                 "status_code": status_code,
                 "bytes_sent": len(response_bytes),
@@ -1719,6 +1772,7 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
                 "response_bytes": response_bytes,
             }
     except socket.timeout:
+        # 目标服务器超时，代理生成 504 返回给客户端。
         bytes_sent = send_simple_response(
             client_socket,
             504,
@@ -1727,6 +1781,7 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
         )
         return {"outcome": "error", "status_code": 504, "bytes_sent": bytes_sent}
     except OSError as error:
+        # DNS、连接拒绝、网络不可达等 socket 错误，统一作为 502 Bad Gateway。
         bytes_sent = send_simple_response(
             client_socket,
             502,
@@ -1756,18 +1811,22 @@ def forward_connect(client_socket, request_info, config):
         bytes_from_client。
     """
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
+    # CONNECT 成功后，代理必须先返回 200，浏览器才会开始 TLS 握手。
     response = b"HTTP/1.1 200 Connection Established\r\nConnection: close\r\n\r\n"
     bytes_to_client = 0
     bytes_from_client = 0
 
     try:
+        # 与 HTTPS 目标服务器建立 TCP 连接，例如 www.baidu.com:443。
         with socket.create_connection(
             (request_info["host"], request_info["port"]),
             timeout=timeout,
         ) as upstream_socket:
+            # 告诉浏览器“隧道建立成功”，后续双方开始传 TLS 加密数据。
             client_socket.sendall(response)
             bytes_to_client += len(response)
 
+            # 两个 socket 都设为非阻塞，配合 select 同时监听两边是否有数据。
             client_socket.setblocking(False)
             upstream_socket.setblocking(False)
 
@@ -1778,6 +1837,7 @@ def forward_connect(client_socket, request_info, config):
                 if time.time() - last_activity > timeout:
                     break
 
+                # select 会告诉我们 client_socket 或 upstream_socket 哪个已经可读。
                 readable, _, exceptional = select.select(sockets, [], sockets, 1)
                 if exceptional:
                     break
@@ -1789,6 +1849,7 @@ def forward_connect(client_socket, request_info, config):
                         continue
 
                     if not data:
+                        # recv() 返回空字节说明一端关闭连接，隧道正常结束。
                         return {
                             "outcome": "tunnel",
                             "status_code": 200,
@@ -1882,17 +1943,25 @@ def handle_client(client_socket, client_address, state):
     Returns:
         None: 本函数直接向 client_socket 写响应，处理结束后关闭连接。
     """
+    # get_config() 读出当前配置快照。本次请求全程使用这个快照，
+    # 避免处理中途规则变化导致一次请求前后判断不一致。
     config = state.get_config()
     try:
+        # 第一次 recv() 读取客户端发来的 HTTP 请求头。
+        # 对本项目的验收请求来说，请求头通常能在 8192 字节内读完。
         data = client_socket.recv(BUFFER_SIZE)
         if not data:
             return
 
+        # 只要收到了请求，就先把总请求数和客户端上传字节数加上。
         state.increment("total_requests")
         state.increment("bytes_from_clients", len(data))
 
+        # HTTP 头部按 iso-8859-1 解码最稳，因为 HTTP/1.x 头部本质是字节字段。
         request_text = data.decode("iso-8859-1", errors="replace")
+        # request_info 是后续所有过滤和转发的统一数据结构。
         request_info = parse_http_request(request_text)
+        # 记录目标 host 访问次数，给首页“目标主机排行”使用。
         state.record_host(request_info["host"])
 
         print("=" * 60, flush=True)
@@ -1913,26 +1982,38 @@ def handle_client(client_socket, client_address, state):
         print("=" * 60, flush=True)
 
         # 客户端地址策略先于认证和限流执行，拒绝的主机不会消耗认证与限流资源。
+        # 传入 client_address[0]，也就是客户端 IP，例如 127.0.0.1；
+        # 返回 client_allowed 表示是否允许这个客户端使用代理，
+        # client_reason 是拒绝原因，例如 client_ip_blacklist。
         client_allowed, client_reason = check_client_access_policy(client_address[0], config)
         if not client_allowed:
+            # 根据拒绝原因更新首页统计，例如 blocked_client。
             update_block_stats(state, client_reason)
+            # 生成并发送 403 HTML 拦截页；bytes_sent 是实际发给客户端的字节数。
             bytes_sent = send_policy_block_response(
                 client_socket,
                 client_reason,
                 request_info,
                 client_address[0],
             )
+            # 统计代理输出给客户端的总字节数。
             state.increment("bytes_to_clients", bytes_sent)
+            # 写入访问日志和拦截日志，前端“Web 拦截日志”就是读这些记录。
             log_event(
                 state,
                 "BLOCK",
                 f"client={client_address[0]} method={request_info['method']} "
                 f"host={request_info['host']} path={request_info['path']} reason={client_reason}",
             )
+            # 已经返回拦截页，本次请求结束，不能继续转发到目标服务器。
             return
 
+        # check_proxy_auth() 会读取请求头 Proxy-Authorization。
+        # 返回 False 表示认证未开启之外的失败：没带用户名密码或用户名密码错误。
         if not check_proxy_auth(request_info, config):
+            # auth_required 既用于首页统计，也用于总拦截数。
             state.increment("auth_required")
+            # 返回 407，告诉客户端“代理需要认证”。
             bytes_sent = send_auth_required_response(client_socket)
             state.increment("bytes_to_clients", bytes_sent)
             log_event(
@@ -1940,13 +2021,19 @@ def handle_client(client_socket, client_address, state):
                 "AUTH_REQUIRED",
                 f"client={client_address[0]} method={request_info['method']} host={request_info['host']}",
             )
+            # 认证失败时不能继续访问目标服务器。
             return
 
         # 仅对通过认证的请求计数，避免 407 认证挑战消耗限流额度。
         rate_config_enabled = config.get("rate_limit_enabled", False)
         if rate_config_enabled:
+            # max_requests/window_seconds 来自配置，例如 1 秒内最多 3 次。
             max_requests = int(config.get("rate_limit_per_minute", 60))
             window_seconds = int(config.get("rate_limit_window_seconds", 60))
+            # check_rate_limit() 返回三项：
+            # allowed_by_rate 表示是否未超限；
+            # retry_after 表示如果超限还要等多久；
+            # current_count 表示当前窗口内已经访问了几次。
             allowed_by_rate, retry_after, current_count = state.check_rate_limit(
                 client_address[0],
                 max_requests,
@@ -1954,6 +2041,7 @@ def handle_client(client_socket, client_address, state):
             )
             if not allowed_by_rate:
                 state.increment("rate_limited")
+                # 限流命中时返回 429 Too Many Requests，不连接目标服务器。
                 bytes_sent = send_simple_response(
                     client_socket,
                     429,
@@ -1969,6 +2057,7 @@ def handle_client(client_socket, client_address, state):
                     f"limit={max_requests} retry_after={retry_after}",
                 )
                 return
+            # 未超限也记录 RATE_ALLOW，方便日志中展示限流计数变化。
             log_event(
                 state,
                 "RATE_ALLOW",
@@ -1976,9 +2065,12 @@ def handle_client(client_socket, client_address, state):
                 f"host={request_info['host']} count={current_count} limit={max_requests}",
             )
 
+        # check_access_policy() 处理目标相关规则：方法、白名单模式、域名黑名单、URL 关键字。
+        # allowed=False 时，reason 会告诉后续代码是哪种规则命中。
         allowed, reason = check_access_policy(request_info, config)
         if not allowed:
             update_block_stats(state, reason)
+            # 访问策略命中时也返回 403 拦截页，页面里会显示 reason 和目标地址。
             bytes_sent = send_policy_block_response(
                 client_socket,
                 reason,
@@ -1996,11 +2088,14 @@ def handle_client(client_socket, client_address, state):
 
         cache_key = None
         if is_cacheable_request(request_info, config):
+            # 只有开启缓存且请求方法为 GET 时才会进入这里。
             cache_key = build_cache_key(request_info)
+            # get_cache() 返回未过期缓存；不存在或过期时返回 None。
             cached = state.get_cache(cache_key)
             if cached:
                 # 缓存中保存的是上游原始响应。每次命中仍需按当前正文规则检查，
                 # 否则先访问页面、再新增正文规则时，浏览器会一直拿到旧缓存页面。
+                # cached["response_bytes"] 是第一次访问时从目标服务器拿到的原始响应。
                 response_bytes, blocked_keyword = filter_response_content(
                     cached["response_bytes"],
                     config,
@@ -2012,6 +2107,7 @@ def handle_client(client_socket, client_address, state):
                 state.increment("cache_hits")
                 state.increment("bytes_to_clients", bytes_sent)
                 if blocked_keyword:
+                    # 即使命中缓存，如果新规则拦截了正文，也要按 FILTER 记录。
                     state.increment("filtered_keyword")
                     state.record_keyword(blocked_keyword)
                     log_event(
@@ -2030,6 +2126,7 @@ def handle_client(client_socket, client_address, state):
                     )
                     return
                 state.increment("allowed_requests")
+                # 缓存命中且未被正文过滤时，记录 CACHE_HIT 并结束本次请求。
                 log_event(
                     state,
                     "CACHE_HIT",
@@ -2038,6 +2135,7 @@ def handle_client(client_socket, client_address, state):
                     f"status={cached.get('status_code', 0)} bytes={bytes_sent}",
                 )
                 return
+            # 没有缓存或缓存过期，记录 MISS，然后继续访问真实服务器。
             state.increment("cache_misses")
             log_event(
                 state,
@@ -2059,10 +2157,13 @@ def handle_client(client_socket, client_address, state):
                 client_address[0],
             )
 
+        # forward_http()/forward_connect() 返回 result 字典，
+        # bytes_sent 是代理发回客户端的字节数，bytes_from_client 是 CONNECT 隧道里客户端上传的 TLS 字节。
         state.increment("bytes_to_clients", result.get("bytes_sent", 0))
         state.increment("bytes_from_clients", result.get("bytes_from_client", 0))
 
         if result["outcome"] == "allowed":
+            # 普通 HTTP 成功放行。如果本次 GET 可缓存且状态码为 200，就保存原始响应。
             if cache_key and result.get("status_code") == 200 and result.get("response_bytes"):
                 state.set_cache(
                     cache_key,
@@ -2080,6 +2181,7 @@ def handle_client(client_socket, client_address, state):
                 f"status={result.get('status_code', 0)} bytes={result.get('bytes_sent', 0)}",
             )
         elif result["outcome"] == "filtered":
+            # forward_http() 已经发现正文关键词，并把响应替换成 403 拦截页。
             state.increment("filtered_keyword")
             state.record_keyword(result["keyword"])
             log_event(
@@ -2089,6 +2191,7 @@ def handle_client(client_socket, client_address, state):
                 f"host={request_info['host']} path={request_info['path']} keyword={result['keyword']}",
             )
         elif result["outcome"] == "tunnel":
+            # CONNECT 隧道成功建立并转发过数据，计入放行和 HTTPS 隧道统计。
             state.increment("allowed_requests")
             state.increment("https_tunnels")
             log_event(
@@ -2098,6 +2201,7 @@ def handle_client(client_socket, client_address, state):
                 f"port={request_info['port']} bytes={result.get('bytes_sent', 0)}",
             )
         else:
+            # outcome=error 表示目标服务器连接失败、超时等，由代理返回 502/504。
             state.increment("errors")
             log_event(
                 state,
@@ -2106,14 +2210,17 @@ def handle_client(client_socket, client_address, state):
                 f"path={request_info['path']} status={result.get('status_code', 0)}",
             )
     except ValueError as error:
+        # parse_http_request() 等主动抛出的格式错误会进入这里，返回 400。
         state.increment("bad_requests")
         bytes_sent = send_simple_response(client_socket, 400, "Bad Request", str(error))
         state.increment("bytes_to_clients", bytes_sent)
         log_event(state, "ERROR", f"bad_request client={client_address[0]} error={error}")
     except Exception as error:
+        # 兜底异常，防止某个请求线程崩溃影响整个代理服务。
         state.increment("errors")
         log_event(state, "ERROR", f"client={client_address[0]} error={error}")
     finally:
+        # 每个请求处理完都关闭客户端连接；HTTP 代理这里采用短连接模型。
         client_socket.close()
 
 

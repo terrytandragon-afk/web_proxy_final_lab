@@ -34,12 +34,12 @@ main()
   ├─ start_admin_server()     # 启动 8088 管理前端/API
   └─ start_server()           # 启动 8080 代理服务
        └─ accept()
-          └─ handle_client()
-             ├─ parse_http_request()
+          └─ handle_client()             # 处理单个客户端连接
+             ├─ parse_http_request()     # 解析 method、host、port、path
              ├─ check_client_access_policy()
              ├─ check_proxy_auth()
-             ├─ RuntimeState.check_rate_limit()
-             ├─ check_access_policy()
+             ├─ RuntimeState.check_rate_limit()  # 执行访问频率控制
+             ├─ check_access_policy()    # 执行域名、URL、方法、白名单策略
              ├─ RuntimeState.get_cache()
              ├─ forward_http() 或 forward_connect()
              └─ log_event()
@@ -232,6 +232,40 @@ CONNECT www.example.com:443 HTTP/1.1
 
 如果你要向老师说明“代理服务器怎么工作”，可以围绕这个函数讲。
 
+### 9.1 典型拦截代码怎么读
+
+以客户端 IP 策略为例：
+
+```python
+client_allowed, client_reason = check_client_access_policy(client_address[0], config)
+if not client_allowed:
+    update_block_stats(state, client_reason)
+    bytes_sent = send_policy_block_response(
+        client_socket,
+        client_reason,
+        request_info,
+        client_address[0],
+    )
+    state.increment("bytes_to_clients", bytes_sent)
+    log_event(...)
+    return
+```
+
+这段代码可以拆成下面几步理解：
+
+| 代码 | 传入什么 | 得到什么 | 作用 |
+| --- | --- | --- | --- |
+| `client_address[0]` | 客户端地址元组 | 客户端 IP 字符串 | 例如 `127.0.0.1` |
+| `check_client_access_policy(client_address[0], config)` | 客户端 IP、当前配置 | `(是否允许, 原因)` | 判断客户端是否能使用代理 |
+| `if not client_allowed` | 上一步的布尔结果 | 分支判断 | 不允许时进入拦截流程 |
+| `update_block_stats(state, client_reason)` | 运行状态、拦截原因 | 无返回值 | 增加首页对应拦截计数 |
+| `send_policy_block_response(...)` | 客户端 socket、原因、请求信息、客户端 IP | 已发送字节数 | 向浏览器返回代理生成的 403 页面 |
+| `state.increment("bytes_to_clients", bytes_sent)` | 统计字段、字节数 | 无返回值 | 统计代理发给客户端的数据量 |
+| `log_event(...)` | 状态、事件类型、日志文本 | 无返回值 | 写入访问日志和拦截日志 |
+| `return` | 无 | 结束函数 | 已经拦截，不再继续访问目标服务器 |
+
+认证、限流、域名拦截、URL 拦截的代码结构也类似：先调用一个检查函数，拿到“是否允许”和“原因”，如果不允许就更新统计、返回响应、写日志、结束本次请求。
+
 ## 十、管理后端：AdminHandler
 
 `AdminHandler` 运行在 8088 端口，既提供前端 HTML，也提供 API。
@@ -279,4 +313,3 @@ CONNECT www.example.com:443 HTTP/1.1
 8. `forward_connect()`：看 HTTPS 隧道怎么转发。
 9. `RuntimeState`：看规则热更新、统计、缓存和限流怎么保存。
 10. `AdminHandler`：看前端和命令行怎么控制代理。
-
