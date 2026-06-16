@@ -64,6 +64,8 @@
     </div>
   </main>
   <script>
+    // 规则变更详情页：既可以查当前运行代理的变更日志，也可以查批量验收留下的证据日志。
+    // profile=current 走 /api/changes/query，profile=rules 走 /api/evidence/changes/query。
     const params = new URLSearchParams(window.location.search);
     const profileInput = document.getElementById("profileInput");
     const actionInput = document.getElementById("actionInput");

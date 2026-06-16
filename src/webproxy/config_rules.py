@@ -1,3 +1,15 @@
+"""规则配置与命令行/前端输入规范化工具。
+
+代理服务和管理后端都需要读写同一个 JSON 配置文件。这个模块集中处理：
+- 项目根目录定位；
+- 可编辑规则组的元数据；
+- 规则值规范化和重复判断；
+- Windows CMD/PowerShell 下 curl JSON 引号被处理后的兼容解析。
+
+把这些逻辑从 proxy.py 中拆出来，是为了让“网络转发逻辑”和“规则配置逻辑”
+保持分离，便于课程答辩时分别说明。
+"""
+
 import ipaddress
 import json
 from pathlib import Path
@@ -5,7 +17,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# These list fields are editable through the frontend, admin API, and CLI.
+# 这些列表型规则可以通过三种方式修改：
+# 1. 前端管理页面；
+# 2. 后端 HTTP API，例如 /api/rules/add；
+# 3. tools/rule_cli.py 命令行工具。
+# 每个字段都带 title/description/value_label，前端会直接用这些元数据渲染规则卡片。
 LIST_RULE_FIELDS = {
     "blocked_domains": {
         "title": "域名黑名单",
@@ -45,6 +61,7 @@ LIST_RULE_FIELDS = {
 }
 
 CONFIG_SETTING_FIELDS = {
+    # 简单运行时设置的类型表。Admin API 收到 JSON 后会按这里的类型做校验和转换。
     "mode": str,
     "cache_enabled": bool,
     "cache_ttl_seconds": int,
@@ -58,7 +75,7 @@ CONFIG_SETTING_FIELDS = {
 
 
 def load_config(config_path):
-    """Load one JSON configuration file relative to the project root."""
+    """读取 JSON 配置文件；相对路径统一按项目根目录解析。"""
     path = Path(config_path)
     if not path.is_absolute():
         path = PROJECT_ROOT / path
@@ -70,7 +87,7 @@ def load_config(config_path):
 
 
 def resolve_project_path(path_text):
-    """Resolve configured relative paths consistently from the project root."""
+    """把配置文件中的相对路径解析到项目根目录下，避免受当前命令行目录影响。"""
     path = Path(path_text)
     if path.is_absolute():
         return path
@@ -78,7 +95,14 @@ def resolve_project_path(path_text):
 
 
 def normalize_rule_value(rule_type, value):
-    """Normalize user-entered values so duplicate and delete checks are stable."""
+    """规范化用户输入的规则值，使增删改查能稳定匹配。
+
+    例如：
+    - 域名统一转小写并去掉末尾点；
+    - 客户端 IP/CIDR 用 ipaddress 校验，避免非法网段进入配置；
+    - HTTP 方法统一转大写；
+    - 其他关键字保留用户输入，便于做大小写不敏感匹配。
+    """
     normalized = str(value or "").strip()
     if not normalized:
         raise ValueError("rule value cannot be empty")
@@ -86,7 +110,8 @@ def normalize_rule_value(rule_type, value):
         return normalized.lower().strip(".")
     if rule_type in ("blocked_client_ips", "allowed_client_ips"):
         try:
-            # Keep a single host readable; normalize CIDR host bits with strict=False.
+            # 单个 IP 保持为标准地址；CIDR 网段允许用户写 192.168.1.1/24，
+            # strict=False 会自动归一化为 192.168.1.0/24。
             return str(ipaddress.ip_address(normalized))
         except ValueError:
             try:
@@ -99,18 +124,18 @@ def normalize_rule_value(rule_type, value):
 
 
 def rule_identity(rule_type, value):
-    """Return the case-insensitive identity used for rule comparisons."""
+    """返回用于比较的规则身份；大小写差异不应造成重复规则。"""
     return normalize_rule_value(rule_type, value).lower()
 
 
 def validate_rule_type(rule_type):
-    """Reject fields that are not editable list-rule groups."""
+    """只允许修改 LIST_RULE_FIELDS 中声明的规则组，防止任意字段被写入配置。"""
     if rule_type not in LIST_RULE_FIELDS:
         raise ValueError(f"unsupported rule type: {rule_type}")
 
 
 def build_rules_payload(config):
-    """Build the rule-group response consumed by the admin frontend."""
+    """构造前端规则面板需要的响应结构：规则组元数据 + 当前规则值。"""
     groups = []
     for rule_type, metadata in LIST_RULE_FIELDS.items():
         groups.append(
@@ -129,7 +154,11 @@ def build_rules_payload(config):
 
 
 def split_top_level_csv(text):
-    """Split comma-separated values while respecting nested []/{} and quotes."""
+    """按顶层逗号拆分文本，并跳过引号、数组、对象内部的逗号。
+
+    这个函数服务于宽松 JSON 解析。例如 `{settings:{a:1,b:2}}` 中，
+    内层 `a:1,b:2` 不能被外层逗号拆散。
+    """
     items = []
     current = []
     depth = 0
@@ -165,7 +194,12 @@ def split_top_level_csv(text):
 
 
 def parse_loose_json_value(text):
-    """Parse classroom-friendly curl bodies where PowerShell stripped JSON quotes."""
+    """解析课堂验收中常见的宽松 JSON 值。
+
+    Windows PowerShell 和 CMD 对引号的处理不同，用户复制 curl 命令时可能把
+    标准 JSON 变成 `{rule_type:blocked_domains,value:*.bing.com}` 这种形式。
+    后端先尝试标准 json.loads，失败后再用这里的宽松解析兜底。
+    """
     value = text.strip()
     if value.startswith("{") and value.endswith("}"):
         return parse_loose_json_object(value)
@@ -190,7 +224,7 @@ def parse_loose_json_value(text):
 
 
 def parse_loose_json_object(text):
-    """Accept simple {key:value} bodies produced by Windows PowerShell/curl quoting."""
+    """兼容 PowerShell/curl 引号差异产生的简单 `{key:value}` 请求体。"""
     body = text.strip()
     if not (body.startswith("{") and body.endswith("}")):
         raise ValueError("loose JSON body must be an object")

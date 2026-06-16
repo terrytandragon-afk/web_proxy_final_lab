@@ -264,6 +264,8 @@
   </main>
 
   <script>
+    // 日志详情页：把首页传来的 kind/event/search 参数转成后端查询，
+    // 后端会从文本日志中解析出结构化字段，再返回可筛选、可导出的结果。
     const params = new URLSearchParams(window.location.search);
     const kindInput = document.getElementById("kindInput");
     const eventInput = document.getElementById("eventInput");

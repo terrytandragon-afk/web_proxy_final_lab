@@ -25,6 +25,12 @@ report/final_report.tex
 docs/08_backend_cli_rule_management.md
 ```
 
+源码结构、核心函数和代理过滤流程阅读指南位于：
+
+```text
+docs/10_project_structure.md
+```
+
 ## 课程最低要求
 
 1. 能够接收客户端的 Web 访问请求。
@@ -67,6 +73,7 @@ web_proxy_final_lab/
     07_manual_module_verification.md
     08_backend_cli_rule_management.md
     09_powershell_and_backend_echo_fix.md
+    10_project_structure.md
   src/
     README.md
     proxy.py
@@ -74,6 +81,7 @@ web_proxy_final_lab/
       __init__.py
       audit.py
       config_rules.py
+      evidence.py
   tests/
     manual_test_commands.md
     manual_acceptance_workflow_smoke.py

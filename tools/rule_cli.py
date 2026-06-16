@@ -1,3 +1,12 @@
+"""Web 代理规则命令行管理工具。
+
+这个脚本不是直接改内存变量，而是像前端一样调用 8088 管理后端 API。
+好处是：
+- 代理服务器运行中即可增删改查规则；
+- 命令行修改和前端修改走同一套后端校验逻辑；
+- 每次修改都会写入配置文件和规则变更日志，前端也能回显。
+"""
+
 import argparse
 import http.client
 import json
@@ -15,6 +24,14 @@ except AttributeError:
 
 
 def parse_args():
+    """定义命令行参数和子命令。
+
+    常用示例：
+    - list：查看所有规则组；
+    - add/delete/update/replace：修改列表型规则；
+    - set：修改缓存、认证、限流、黑白名单模式等运行时设置；
+    - logs/log-query/log-export：读取或导出日志证据。
+    """
     parser = argparse.ArgumentParser(description="Manage web proxy filter rules from command line")
     parser.add_argument("--admin-host", default="127.0.0.1", help="Admin API host")
     parser.add_argument("--admin-port", type=int, default=8088, help="Admin API port")
@@ -92,7 +109,12 @@ def parse_args():
 
 
 def request_json(args, method, path, payload=None):
-    """发送 JSON 管理请求并返回解析后的 JSON。"""
+    """发送 JSON 管理请求并返回解析后的 JSON。
+
+    这里直接使用 http.client，避免依赖 requests 等第三方库。
+    method/path/payload 对应管理后端 AdminHandler 中的接口，例如：
+    POST /api/rules/add 负责新增规则。
+    """
     body = None
     headers = {}
     if payload is not None:
@@ -117,7 +139,7 @@ def request_json(args, method, path, payload=None):
 
 
 def request_bytes(args, method, path):
-    """Download a non-JSON admin response, currently used for CSV evidence export."""
+    """下载非 JSON 响应，目前用于把日志查询结果导出为 CSV 文件。"""
     connection = http.client.HTTPConnection(args.admin_host, args.admin_port, timeout=10)
     connection.request(method, path)
     response = connection.getresponse()
@@ -129,6 +151,7 @@ def request_bytes(args, method, path):
 
 
 def print_json(payload):
+    """用 UTF-8 JSON 格式打印结果，便于在 PowerShell/CMD 中复制留证。"""
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
@@ -153,13 +176,17 @@ def fetch_config(args):
 
 
 def main():
+    """根据子命令组装 API 请求，并把后端返回结果原样打印出来。"""
     args = parse_args()
 
     if args.command == "list":
+        # GET /api/rules：查询所有可编辑规则组。
         result = request_json(args, "GET", "/api/rules")
     elif args.command == "config":
+        # GET /api/config：查看当前运行配置。
         result = request_json(args, "GET", "/api/config")
     elif args.command == "add":
+        # POST /api/rules/add：新增一条规则，例如 blocked_domains *.bing.com。
         result = request_json(
             args,
             "POST",
@@ -167,6 +194,7 @@ def main():
             {"rule_type": args.rule_type, "value": args.value},
         )
     elif args.command == "delete":
+        # POST /api/rules/delete：删除一条规则。
         result = request_json(
             args,
             "POST",
@@ -174,6 +202,7 @@ def main():
             {"rule_type": args.rule_type, "value": args.value},
         )
     elif args.command == "update":
+        # POST /api/rules/update：把旧规则值替换成新规则值。
         result = request_json(
             args,
             "POST",
@@ -185,6 +214,7 @@ def main():
             },
         )
     elif args.command == "replace":
+        # POST /api/rules/replace：一次性替换整个规则组，适合恢复验收环境。
         result = request_json(
             args,
             "POST",
@@ -192,6 +222,7 @@ def main():
             {"rule_type": args.rule_type, "values": args.values},
         )
     elif args.command == "set":
+        # POST /api/settings/update：修改运行时设置，例如限流开关、缓存 TTL。
         result = request_json(
             args,
             "POST",
@@ -199,6 +230,7 @@ def main():
             {"settings": {args.key: parse_setting_value(args.value)}},
         )
     elif args.command == "auth-user":
+        # 认证用户表是一个整体设置，所以先读出现有用户，再追加/覆盖指定用户。
         config = fetch_config(args)
         users = dict(config.get("proxy_auth_users", {}))
         users[args.username] = args.password
@@ -209,6 +241,7 @@ def main():
             {"settings": {"proxy_auth_users": users}},
         )
     elif args.command == "auth-delete":
+        # 删除认证用户同样需要先取出现有用户表，再移除目标用户名后写回。
         config = fetch_config(args)
         users = dict(config.get("proxy_auth_users", {}))
         users.pop(args.username, None)

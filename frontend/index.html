@@ -651,6 +651,8 @@
 
   <script>
     // 前端只负责管理规则和展示状态，真正的代理转发、过滤、日志逻辑都在 src/proxy.py。
+    // 页面数据统一来自 8088 管理后端：/api/rules 管规则，/api/stats 管统计，
+    // /api/logs 管访问/拦截日志，/api/changes 管规则变更回显。
     const state = {
       currentLog: "proxy",
       config: null,
@@ -663,6 +665,7 @@
     };
 
     const metricDefs = [
+      // 首页统计卡片与日志详情页联动：点击卡片会带着 event/search 参数跳到 logs.html。
       { key: "total_requests", label: "总请求", kind: "proxy" },
       { key: "total_blocked", label: "总拦截", kind: "blocked" },
       { key: "allowed_requests", label: "放行", kind: "proxy", event: "ALLOW,CACHE_HIT,CONNECT" },
@@ -779,6 +782,7 @@
     }
 
     function postJson(url, payload = {}) {
+      // 规则修改和运行设置修改统一发送 JSON；后端同时兼容前端 JSON 与命令行 curl。
       return getJson(url, {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -936,6 +940,7 @@
     }
 
     async function loadStats() {
+      // current 读取代理进程内存统计；evidence 读取批量验收日志重建出的统计。
       const endpoint = state.dashboardSource === "evidence"
         ? "/api/evidence/dashboard"
         : "/api/stats";
@@ -1009,7 +1014,7 @@
     }
 
     async function addRule(ruleType, value) {
-      // Mutations always target the live proxy, so return the dashboard to live data.
+      // 规则修改一定作用于正在运行的代理，所以修改后把首页切回“当前运行”数据源。
       applyDashboardSource("current");
       const result = await postJson("/api/rules/add", { rule_type: ruleType, value });
       recordChange("add", result);

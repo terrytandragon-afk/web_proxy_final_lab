@@ -1,3 +1,14 @@
+"""代理运行日志与日志查询工具。
+
+代理每处理一个事件都会写入文本日志，例如：
+    [2026-06-10 15:15:37] FILTER client=127.0.0.1 method=GET ...
+
+本模块负责三件事：
+1. 把事件写入访问日志、拦截日志、错误日志；
+2. 把日志行解析成结构化字段，供前端按事件类型、关键词筛选；
+3. 把查询结果导出为 CSV，方便课程验收留证。
+"""
+
 import csv
 from datetime import datetime
 import io
@@ -7,12 +18,14 @@ from .config_rules import resolve_project_path
 
 
 LOG_FILE_KEYS = {
+    # API 中的 kind 参数和配置文件中的日志路径字段之间的映射。
     "proxy": "log_file",
     "blocked": "blocked_log_file",
     "error": "error_log_file",
 }
 
 LOG_LINE_PATTERN = re.compile(
+    # 日志格式统一为：[时间] 事件名 key=value key=value ...
     r"^\[(?P<time>[^\]]+)\]\s+(?P<event>[A-Z_]+)(?:\s+(?P<message>.*))?$"
 )
 

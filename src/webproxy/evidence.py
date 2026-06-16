@@ -1,3 +1,11 @@
+"""批量验收证据读取与大屏统计重建。
+
+实时运行时，管理首页从 RuntimeState 读取统计；批量验收脚本结束后，代理进程
+可能已经退出，内存统计也不存在了。为了解决“脚本跑完但前端首页看不到数据”
+的问题，测试脚本会把日志写入 tests/evidence 目录，本模块再从这些持久化日志
+中重建统计数据和规则变更记录。
+"""
+
 import json
 from collections import Counter
 from datetime import datetime
@@ -6,8 +14,8 @@ from .audit import parse_log_line
 from .config_rules import PROJECT_ROOT, load_config
 
 
-# Evidence profiles are fixed server-side. The API never accepts an arbitrary path
-# from the browser, so the read-only evidence viewer cannot expose unrelated files.
+# 证据 profile 在后端写死，浏览器不能传任意文件路径。
+# 这样前端只能查看项目约定的验收日志，不能借 API 读取系统上的其他文件。
 EVIDENCE_PROFILES = {
     "web": {
         "title": "Web/代理功能验收证据",
@@ -23,7 +31,7 @@ EVIDENCE_PROFILES = {
 
 
 def get_evidence_profile(profile_name):
-    """Return metadata for one trusted evidence profile or reject the name."""
+    """返回可信证据 profile 的元数据；未知名称直接拒绝。"""
     profile = EVIDENCE_PROFILES.get(str(profile_name or "").strip().lower())
     if not profile:
         raise ValueError(f"unsupported evidence profile: {profile_name}")
@@ -31,7 +39,7 @@ def get_evidence_profile(profile_name):
 
 
 def load_evidence_config(profile_name):
-    """Load the isolated acceptance configuration selected by a fixed profile."""
+    """读取某个验收 profile 对应的独立配置文件。"""
     profile = get_evidence_profile(profile_name)
     config_path = profile["config_path"]
     if not config_path.exists():
@@ -40,7 +48,7 @@ def load_evidence_config(profile_name):
 
 
 def _read_jsonl(path):
-    """Read valid JSON objects from a JSONL evidence file."""
+    """从 JSONL 证据文件中读取合法 JSON 对象，坏行会被跳过。"""
     if not path or not path.exists():
         return []
     entries = []
@@ -55,14 +63,14 @@ def _read_jsonl(path):
 
 
 def _count_lines(path):
-    """Count persisted evidence lines without loading application state."""
+    """统计证据日志行数，用于首页判断批量验收证据是否存在。"""
     if not path or not path.exists():
         return 0
     return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
 
 
 def _config_path(config, key):
-    """Resolve one path stored in an evidence configuration."""
+    """解析证据配置中的日志路径。"""
     path_text = config.get(key)
     if not path_text:
         return None
@@ -71,7 +79,7 @@ def _config_path(config, key):
 
 
 def list_evidence_profiles():
-    """Describe evidence availability and counts for the main dashboard."""
+    """列出 Web 功能验收和规则验收两类证据的可用状态与日志数量。"""
     results = []
     for name, profile in EVIDENCE_PROFILES.items():
         config_path = profile["config_path"]
@@ -100,7 +108,7 @@ def query_change_entries_from_config(
     search="",
     limit=200,
 ):
-    """Query one configured JSONL change log like a small read-only database."""
+    """像只读小数据库一样查询 JSONL 规则变更日志。"""
     change_path = _config_path(config, "change_log_file")
     entries = _read_jsonl(change_path)
     normalized_action = str(action or "").strip().lower()
@@ -142,7 +150,7 @@ def query_change_entries_from_config(
 
 
 def query_change_entries(profile_name, action="", rule_type="", search="", limit=200):
-    """Query persisted acceptance changes from one fixed evidence profile."""
+    """查询某个固定验收 profile 中持久化的规则变更证据。"""
     return query_change_entries_from_config(
         load_evidence_config(profile_name),
         profile_name=profile_name,
@@ -154,7 +162,11 @@ def query_change_entries(profile_name, action="", rule_type="", search="", limit
 
 
 def build_evidence_dashboard():
-    """Rebuild the main dashboard snapshot from the latest persisted Web evidence."""
+    """从最新 Web 验收日志重建首页统计快照。
+
+    这里不会读取代理进程内存，而是逐行解析日志，把 ALLOW、BLOCK、FILTER、
+    CONNECT、CACHE_HIT 等事件重新累计成和实时首页一致的统计结构。
+    """
     config = load_evidence_config("web")
     proxy_log_path = _config_path(config, "log_file")
     lines = (
@@ -164,8 +176,8 @@ def build_evidence_dashboard():
     )
     entries = [parse_log_line(line) for line in lines]
 
-    # These events finish one proxy request. Intermediate events such as CACHE_MISS
-    # and RATE_ALLOW are counted separately but must not inflate total_requests.
+    # 这些事件代表一次请求已经完成。CACHE_MISS、RATE_ALLOW 属于中间过程，
+    # 可以单独统计，但不能重复增加 total_requests。
     terminal_events = {
         "ALLOW",
         "CACHE_HIT",
@@ -254,7 +266,7 @@ def build_evidence_dashboard():
         elif event == "CACHE_HIT" and host:
             cache_keys.add(cache_key)
         elif event == "ALLOW" and cache_key in pending_cache_misses:
-            # A miss followed by ALLOW is stored; a miss followed by FILTER is not.
+            # MISS 后如果最终 ALLOW，说明该响应可被缓存；MISS 后 FILTER 不缓存。
             cache_keys.add(cache_key)
 
     stats["cache_entries"] = len(cache_keys)

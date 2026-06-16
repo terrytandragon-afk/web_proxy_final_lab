@@ -1,3 +1,16 @@
+"""课程实验的 Web 正向代理主程序。
+
+这个文件同时包含两个服务：
+1. 代理服务，默认监听 127.0.0.1:8080。浏览器或 curl 把请求交给它后，
+   它负责解析请求、检查过滤规则、连接真实目标服务器，再把响应返回给客户端。
+2. 管理服务，默认监听 127.0.0.1:8088。它给前端页面和命令行工具提供
+   规则增删改查、运行设置、日志查询、缓存清理等 HTTP API。
+
+实现上没有使用现成代理框架，而是直接使用 Python socket 处理 TCP 连接。
+这样更适合课程展示：可以清楚看到 HTTP 请求行如何被解析、代理请求如何被
+改写成普通服务器请求，以及域名/URL/正文关键字过滤分别发生在哪个阶段。
+"""
+
 import argparse
 import base64
 import fnmatch
@@ -79,10 +92,15 @@ class RuntimeState:
     """保存代理运行期间的共享状态：配置、统计、缓存、限流桶和排行数据。"""
 
     def __init__(self, config, config_path=""):
+        # config 是从 JSON 文件读入的当前规则和运行参数；管理 API 修改规则时，
+        # 会同时更新这里的内存副本并写回配置文件，所以代理无需重启即可生效。
         self.config = config
         self.config_path = config_path
         self.started_at = time.time()
+        # 代理服务是多线程模型：每个客户端连接一个线程。
+        # 统计、缓存、限流桶等共享数据必须用锁保护，避免并发读写时数据错乱。
         self.lock = threading.Lock()
+        # 首页统计卡片的数据来源。每处理一个请求，handle_client 会按结果更新对应字段。
         self.stats = {
             "total_requests": 0,
             "allowed_requests": 0,
@@ -103,7 +121,10 @@ class RuntimeState:
         }
         self.host_hits = {}
         self.keyword_hits = {}
+        # cache 保存的是“上游服务器返回的原始 HTTP 响应字节”，不是过滤后的页面。
+        # 这样命中缓存时仍然可以按最新正文规则重新检查，保证规则热更新有效。
         self.cache = {}
+        # rate_limits 按客户端 IP 存固定窗口计数，用于访问频率限制模块。
         self.rate_limits = {}
         # JSONL 持久化历史使前端在代理重启后仍能显示 CLI/API 变更。
         self.change_history = self._load_change_history()
@@ -590,12 +611,14 @@ def parse_args():
 
 
 def ensure_state(state_or_config=None):
+    """测试代码可直接传入配置 dict；真实运行时则复用 RuntimeState 对象。"""
     if isinstance(state_or_config, RuntimeState):
         return state_or_config
     return RuntimeState(state_or_config or {})
 
 
 def find_header(headers, name):
+    """在原始请求头/响应头行中查找一个头字段，大小写不敏感。"""
     prefix = name.lower() + ":"
     for line in headers:
         if line.lower().startswith(prefix):
@@ -613,7 +636,16 @@ def parse_bounded_query_int(query, name, default, maximum):
 
 
 def parse_http_request(request_text):
-    """解析客户端发来的 HTTP/代理请求，提取方法、目标主机、端口、路径和请求头。"""
+    """解析客户端发来的 HTTP/代理请求，提取方法、目标主机、端口、路径和请求头。
+
+    浏览器使用正向代理时，请求格式与普通 Web 服务器看到的格式略有不同：
+    - 明文 HTTP：请求行通常是 `GET http://example.com/a.html HTTP/1.1`，
+      代理需要从完整 URL 中拆出 host、port、path。
+    - HTTPS：浏览器先发送 `CONNECT example.com:443 HTTP/1.1`，
+      代理只知道目标主机和端口，后续正文是 TLS 加密字节流。
+    - 本地测试或部分工具也可能发送普通格式 `GET /a.html HTTP/1.1`，
+      此时要从 Host 头补出目标主机。
+    """
     lines = request_text.splitlines()
     if not lines:
         raise ValueError("empty request")
@@ -626,6 +658,7 @@ def parse_http_request(request_text):
     host_header = find_header(lines[1:], "Host")
 
     if method.upper() == "CONNECT":
+        # CONNECT 只建立 TCP 隧道，不会出现 URL 路径；默认端口按 HTTPS 使用 443。
         host_part = target
         if not host_part and host_header:
             host_part = host_header
@@ -637,6 +670,7 @@ def parse_http_request(request_text):
             port = 443
         path = target
     elif target.startswith("http://"):
+        # 代理格式的明文 HTTP 请求：请求行里带完整 URL，需要改写后再发给真实服务器。
         parsed = urlsplit(target)
         host = parsed.hostname
         port = parsed.port or 80
@@ -644,6 +678,7 @@ def parse_http_request(request_text):
         if parsed.query:
             path += "?" + parsed.query
     else:
+        # 普通源服务器格式请求，主要用于本地测试；目标主机来自 Host 请求头。
         if not host_header:
             raise ValueError("missing Host header")
         host_part = host_header
@@ -778,7 +813,14 @@ def send_auth_required_response(client_socket):
 
 
 def domain_matches(host, patterns):
-    """匹配域名规则，支持完整域名、后缀域名和显式通配符。"""
+    """匹配域名规则，支持完整域名、后缀域名和显式通配符。
+
+    设计约定：
+    - `www.baidu.com` 只匹配这个完整主机；
+    - `baidu.com` 匹配 `baidu.com` 及其子域名，例如 `www.baidu.com`；
+    - `*.baidu.com`、`*baidu*` 使用 fnmatch 通配符匹配；
+    - 普通短词 `baidu` 不自动当作包含匹配，避免误伤其他无关域名。
+    """
     host = host.lower().strip(".")
     for pattern in patterns:
         pattern = pattern.lower().strip(".")
@@ -828,7 +870,16 @@ def check_client_access_policy(client_ip, config):
 
 
 def check_access_policy(request_info, config):
-    """执行访问控制：方法黑名单、白名单模式、域名黑名单和 URL 关键字拦截。"""
+    """执行访问控制：方法黑名单、白名单模式、域名黑名单和 URL 关键字拦截。
+
+    这里处理的是“请求到达上游服务器之前”就能判断的规则：
+    - HTTP 方法：例如禁止 DELETE/PUT；
+    - 域名黑白名单：只看目标 host；
+    - URL 关键字：看 host、path、query 和原始 target。
+
+    正文关键字过滤不在这里做，因为正文需要先向目标服务器取回响应，
+    再在 filter_response_content 中检查。
+    """
     host = request_info["host"]
     method = request_info["method"]
     path = request_info["path"]
@@ -840,14 +891,18 @@ def check_access_policy(request_info, config):
         return False, "method_blacklist"
 
     if mode == "whitelist":
+        # 白名单模式下，不在 allowed_domains 中的目标一律拒绝。
         allowed_domains = config.get("allowed_domains", [])
         if not domain_matches(host, allowed_domains):
             return False, "domain_not_in_whitelist"
 
+    # 黑名单检查在白名单之后执行；如果二者都配置，黑名单仍可进一步收紧访问范围。
     blocked_domains = config.get("blocked_domains", [])
     if domain_matches(host, blocked_domains):
         return False, "domain_blacklist"
 
+    # 明文 HTTP 可以看到完整路径和查询参数，因此能拦 /game/index.html 这类 URL 片段。
+    # HTTPS 的具体路径在 TLS 内部，代理不解密，只能看到 CONNECT 目标域名。
     searchable_url = f"{host}{path} {target}".lower()
     for keyword in config.get("blocked_url_keywords", []):
         if keyword.lower() in searchable_url:
@@ -857,7 +912,12 @@ def check_access_policy(request_info, config):
 
 
 def check_proxy_auth(request_info, config):
-    """检查 Proxy-Authorization Basic 认证头，认证关闭时直接放行。"""
+    """检查 Proxy-Authorization Basic 认证头，认证关闭时直接放行。
+
+    代理认证与普通网站登录不同：浏览器会把用户名密码放在
+    Proxy-Authorization 头里发给代理，代理验证通过后才继续访问目标网站。
+    这个头不会转发给上游服务器，避免把代理密码泄露给外部网站。
+    """
     if not config.get("proxy_auth_enabled", False):
         return True
 
@@ -879,14 +939,17 @@ def check_proxy_auth(request_info, config):
 
 
 def is_cacheable_request(request_info, config):
+    """当前只缓存 GET 请求，避免缓存 POST/PUT 等可能改变服务器状态的请求。"""
     return bool(config.get("cache_enabled", False)) and request_info["method"] == "GET"
 
 
 def build_cache_key(request_info):
+    """缓存键由 host、port、path 组成，同一路径的重复 GET 可命中缓存。"""
     return f"{request_info['host']}:{request_info['port']}{request_info['path']}"
 
 
 def is_text_content_type(content_type):
+    """只有文本类响应才做正文关键字扫描，图片、压缩包等二进制内容直接放行。"""
     text_types = (
         "text/html",
         "text/plain",
@@ -903,6 +966,7 @@ def response_header_value(header_lines, name):
 
 
 def parse_status_code(response_bytes):
+    """从 HTTP 响应状态行中取出状态码，例如 200、403、404。"""
     first_line = response_bytes.split(b"\r\n", 1)[0].decode("iso-8859-1", errors="replace")
     parts = first_line.split()
     if len(parts) >= 2 and parts[1].isdigit():
@@ -995,7 +1059,12 @@ def response_has_explicit_length(response_bytes):
 
 
 def receive_http_response(upstream_socket, request_method="GET"):
-    """接收一个完整 HTTP 响应；有报文边界时收到正文后立即返回。"""
+    """接收一个完整 HTTP 响应；有报文边界时收到正文后立即返回。
+
+    代理必须先尽量收完整上游响应，才能做正文关键词过滤和缓存。
+    对 Content-Length 或 chunked 响应，本函数按 HTTP 协议边界判断结束；
+    对没有长度信息的旧式响应，只能等待服务器关闭连接或超时。
+    """
     response = bytearray()
     while True:
         try:
@@ -1013,7 +1082,12 @@ def receive_http_response(upstream_socket, request_method="GET"):
 
 
 def decode_text_body(body, content_type):
-    """按响应声明字符集解码正文，并兼容常见 UTF-8、GB18030 页面。"""
+    """按响应声明字符集解码正文，并兼容常见 UTF-8、GB18030 页面。
+
+    关键词匹配必须在字符串层面完成，所以需要把字节正文转换成文本。
+    如果页面没有声明 charset，就按常见顺序尝试，保证国内网页和英文网页
+    都有较高概率被正确识别。
+    """
     declared_charset = ""
     for parameter in content_type.split(";")[1:]:
         name, separator, value = parameter.partition("=")
@@ -1036,7 +1110,18 @@ def decode_text_body(body, content_type):
 
 
 def filter_response_content(response_bytes, config, request_info=None, client_ip=""):
-    """对 HTTP 明文文本响应做正文关键字过滤，二进制内容直接放行。"""
+    """对 HTTP 明文文本响应做正文关键字过滤，二进制内容直接放行。
+
+    工作流程：
+    1. 拆分响应头和响应体；
+    2. 只检查 text/html、text/plain、json、javascript 等文本响应；
+    3. 如果正文使用 chunked、gzip、deflate，先解码成可检查的原始文本；
+    4. 命中 blocked_content_keywords 后，不把原网页发给浏览器，
+       而是构造一个代理生成的 403 HTML 提示页。
+
+    注意：HTTPS 正文经过 TLS 加密，本代理没有做中间人解密，因此无法检查
+    HTTPS 页面正文，只能检查 CONNECT 目标域名。
+    """
     if b"\r\n\r\n" not in response_bytes:
         return response_bytes, None
 
@@ -1051,9 +1136,11 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
     if not is_text_content_type(content_type):
         return response_bytes, None
 
+    # chunked 是 HTTP 分块传输编码；关键词检查时需要把多个 chunk 还原成连续正文。
     inspection_body = decode_chunked_body(body) if "chunked" in transfer_encoding.lower() else body
     encoding = content_encoding.strip().lower()
     try:
+        # 很多网站会 gzip 压缩文本响应。若不先解压，关键字在压缩字节中无法匹配。
         if encoding == "gzip":
             inspection_body = gzip.decompress(inspection_body)
         elif encoding == "deflate":
@@ -1069,6 +1156,8 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
 
     for keyword in config.get("blocked_content_keywords", []):
         if keyword.lower() in body_text_lower:
+            # 返回的不是原服务器响应，而是本代理生成的 403 拦截页；
+            # 浏览器中看到的“详细信息”也来自这里。
             return (
                 build_policy_block_response(
                     f"content_keyword:{keyword}",
@@ -1083,6 +1172,7 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
 
 
 def split_request(request_text):
+    """把客户端请求分为头部行和可选请求体，用于改写上游请求。"""
     if "\r\n\r\n" in request_text:
         header_text, body = request_text.split("\r\n\r\n", 1)
     elif "\n\n" in request_text:
@@ -1093,7 +1183,17 @@ def split_request(request_text):
 
 
 def build_upstream_request(request_text, request_info):
-    """把代理格式请求改写成真实服务器能接受的普通 HTTP 请求。"""
+    """把代理格式请求改写成真实服务器能接受的普通 HTTP 请求。
+
+    浏览器发给代理的请求行可能是：
+        GET http://example.com/index.html HTTP/1.1
+    真实 Web 服务器通常期望：
+        GET /index.html HTTP/1.1
+        Host: example.com
+
+    因此代理在这里完成“请求报文改写”：保留必要请求头，去掉代理专用头，
+    并强制使用 identity 编码，方便后续正文关键字检查。
+    """
     header_lines, body = split_request(request_text)
     upstream_lines = [
         f"{request_info['method']} {request_info['path']} {request_info['version']}",
@@ -1121,6 +1221,8 @@ def build_upstream_request(request_text, request_info):
         upstream_lines.append(line)
 
     upstream_lines.append("Connection: close")
+    # 告诉上游尽量不要压缩响应，降低正文过滤复杂度；若服务器仍返回 gzip，
+    # filter_response_content 中仍会尝试解压检查。
     upstream_lines.append("Accept-Encoding: identity")
 
     upstream_text = "\r\n".join(upstream_lines) + "\r\n\r\n" + body
@@ -1128,7 +1230,13 @@ def build_upstream_request(request_text, request_info):
 
 
 def forward_http(client_socket, request_text, request_info, config, client_ip=""):
-    """处理普通 HTTP 请求：连接目标服务器、转发请求、接收响应、执行正文过滤。"""
+    """处理普通 HTTP 请求：连接目标服务器、转发请求、接收响应、执行正文过滤。
+
+    这是明文 Web 代理的核心路径：
+    客户端浏览器 -> 本代理 -> 目标 Web 服务器 -> 本代理 -> 客户端浏览器。
+    域名/URL 规则已经在 handle_client 中提前判断；这里主要负责真正转发
+    和收到响应后的正文关键字过滤。
+    """
     upstream_request = build_upstream_request(request_text, request_info)
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
 
@@ -1179,7 +1287,16 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
 
 
 def forward_connect(client_socket, request_info, config):
-    """处理 HTTPS CONNECT：建立 TCP 隧道，只转发加密字节流，不读取 HTTPS 正文。"""
+    """处理 HTTPS CONNECT：建立 TCP 隧道，只转发加密字节流，不读取 HTTPS 正文。
+
+    HTTPS 代理的标准做法是：
+    1. 浏览器向代理发送 CONNECT host:443；
+    2. 代理连接目标服务器成功后返回 200 Connection Established；
+    3. 浏览器和目标服务器开始 TLS 握手，代理只搬运双方加密字节。
+
+    因为没有解密 TLS，本项目可以记录 CONNECT、限制域名、统计流量，
+    但不能检查 HTTPS 页面路径和正文关键字。
+    """
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
     response = b"HTTP/1.1 200 Connection Established\r\nConnection: close\r\n\r\n"
     bytes_to_client = 0
@@ -1223,9 +1340,11 @@ def forward_connect(client_socket, request_info, config):
 
                     last_activity = time.time()
                     if ready_socket is client_socket:
+                        # 客户端发来的 TLS 字节转给真实服务器。
                         upstream_socket.sendall(data)
                         bytes_from_client += len(data)
                     else:
+                        # 真实服务器返回的 TLS 字节转回浏览器。
                         client_socket.sendall(data)
                         bytes_to_client += len(data)
 
@@ -1276,7 +1395,18 @@ def update_block_stats(state, reason):
 
 
 def handle_client(client_socket, client_address, state):
-    """处理单个客户端连接，是认证、限流、规则过滤、缓存、转发的总入口。"""
+    """处理单个客户端连接，是认证、限流、规则过滤、缓存、转发的总入口。
+
+    单次请求的处理顺序固定如下：
+    1. 接收并解析 HTTP/CONNECT 请求；
+    2. 检查客户端 IP 黑白名单；
+    3. 检查代理认证；
+    4. 检查访问频率限制；
+    5. 检查方法、域名、URL 关键字等请求阶段规则；
+    6. GET 请求尝试读取缓存；
+    7. 按 CONNECT 或普通 HTTP 分支转发；
+    8. 记录统计和日志，供前端大屏和日志详情页展示。
+    """
     config = state.get_config()
     try:
         data = client_socket.recv(BUFFER_SIZE)
@@ -1442,8 +1572,10 @@ def handle_client(client_socket, client_address, state):
             )
 
         if request_info["method"] == "CONNECT":
+            # HTTPS 请求进入隧道转发分支。
             result = forward_connect(client_socket, request_info, config)
         else:
+            # 明文 HTTP 请求进入普通转发分支，可在响应阶段做正文过滤。
             result = forward_http(
                 client_socket,
                 request_text,
@@ -1511,11 +1643,19 @@ def handle_client(client_socket, client_address, state):
 
 
 class AdminHandler(BaseHTTPRequestHandler):
-    """管理后端：提供前端页面、配置/规则 API、统计 API、日志 API 和演示重置 API。"""
+    """管理后端：提供前端页面、配置/规则 API、统计 API、日志 API 和演示重置 API。
+
+    这个类相当于项目的“后端控制面”：
+    - 浏览器访问 8088 时，会拿到 frontend 目录中的管理页面；
+    - 前端按钮和 rule_cli.py 都调用这里的 /api/rules/* 与 /api/settings/update；
+    - 代理线程写入 RuntimeState 和日志文件后，前端通过 /api/stats、/api/logs/query
+      读取最新统计和拦截证据。
+    """
 
     state = None
 
     def do_GET(self):
+        """处理只读接口：前端页面、当前配置、统计、日志查询、CSV 导出。"""
         parsed = urlsplit(self.path)
         if parsed.path in ("/", "/index.html"):
             self.send_frontend(FRONTEND_INDEX)
@@ -1527,9 +1667,11 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_frontend(CHANGE_DETAILS_INDEX)
             return
         if parsed.path == "/api/config":
+            # 返回完整运行配置，命令行工具更新认证用户时会先读取它。
             self.send_json({"config": self.state.get_config()})
             return
         if parsed.path == "/api/rules":
+            # 返回可编辑规则组，前端用它渲染规则卡片。
             self.send_json(self.state.get_rules())
             return
         if parsed.path == "/api/changes":
@@ -1546,6 +1688,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_json(self.state.query_changes(action, rule_type, search, limit))
             return
         if parsed.path == "/api/stats":
+            # 首页实时统计卡片的数据来源。
             self.send_json(self.state.snapshot())
             return
         if parsed.path == "/api/logs":
@@ -1558,6 +1701,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_json({"kind": kind, "profile": profile, "logs": logs})
             return
         if parsed.path == "/api/logs/query":
+            # 日志详情页把普通文本日志解析成结构化结果，再按事件/关键词筛选。
             query = parse_qs(parsed.query)
             kind = query.get("kind", ["proxy"])[0]
             profile = query.get("profile", [""])[0]
@@ -1576,6 +1720,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_json(result)
             return
         if parsed.path == "/api/logs/export.csv":
+            # 导出当前查询结果，便于验收时留存 CSV 证据。
             query = parse_qs(parsed.query)
             kind = query.get("kind", ["proxy"])[0]
             profile = query.get("profile", [""])[0]
@@ -1625,6 +1770,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Not Found")
 
     def do_POST(self):
+        """处理会改变运行状态的接口：规则增删改、设置切换、缓存/日志清理。"""
         parsed = urlsplit(self.path)
         try:
             if parsed.path == "/api/reload":
@@ -1632,6 +1778,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "config": config})
                 return
             if parsed.path == "/api/rules/add":
+                # 新增单条规则。前端“添加”按钮和 rule_cli.py add 都走这个入口。
                 payload = self.read_json_body()
                 result = self.state.add_list_rule(
                     payload.get("rule_type"),
@@ -1640,6 +1787,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self.send_json(result)
                 return
             if parsed.path == "/api/rules/delete":
+                # 删除单条规则，按规范化后的规则身份匹配。
                 payload = self.read_json_body()
                 result = self.state.delete_list_rule(
                     payload.get("rule_type"),
@@ -1648,6 +1796,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self.send_json(result)
                 return
             if parsed.path == "/api/rules/update":
+                # 修改单条规则，用于把一个旧值替换成新值。
                 payload = self.read_json_body()
                 result = self.state.update_list_rule(
                     payload.get("rule_type"),
@@ -1657,6 +1806,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self.send_json(result)
                 return
             if parsed.path == "/api/rules/replace":
+                # 替换整个规则组，适合验收脚本恢复一组稳定规则。
                 payload = self.read_json_body()
                 result = self.state.replace_list_rules(
                     payload.get("rule_type"),
@@ -1665,6 +1815,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self.send_json(result)
                 return
             if parsed.path == "/api/settings/update":
+                # 热更新缓存、认证、限流、黑/白名单模式等运行时设置。
                 payload = self.read_json_body()
                 updates = payload.get("settings", payload)
                 result = self.state.update_settings(updates)
