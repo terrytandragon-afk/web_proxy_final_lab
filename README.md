@@ -29,6 +29,7 @@ docs/08_backend_cli_rule_management.md
 
 ```text
 docs/10_project_structure.md
+docs/11_proxy_py_code_structure.md
 ```
 
 ## 课程最低要求
@@ -74,6 +75,7 @@ web_proxy_final_lab/
     08_backend_cli_rule_management.md
     09_powershell_and_backend_echo_fix.md
     10_project_structure.md
+    11_proxy_py_code_structure.md
   src/
     README.md
     proxy.py

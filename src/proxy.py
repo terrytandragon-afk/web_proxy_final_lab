@@ -88,10 +88,34 @@ LOG_DETAILS_INDEX = PROJECT_ROOT / "frontend" / "logs.html"
 CHANGE_DETAILS_INDEX = PROJECT_ROOT / "frontend" / "changes.html"
 
 
+# =============================================================================
+# 1. 运行状态区：保存配置、统计、缓存、限流和规则变更历史
+# =============================================================================
+
+
 class RuntimeState:
     """保存代理运行期间的共享状态：配置、统计、缓存、限流桶和排行数据。"""
 
     def __init__(self, config, config_path=""):
+        """
+        初始化代理运行期间的共享状态。
+
+        Args:
+            config: 从 JSON 文件读入的当前规则和运行参数，支持热更新。
+            config_path: 配置文件路径，用于热更新时写回磁盘。
+
+        Attributes:
+            config: 规则和运行参数的内存副本。
+            config_path: 配置文件路径。
+            started_at: 代理启动时间戳。
+            lock: 线程锁，保护统计、缓存、限流桶等共享数据。
+            stats: 请求统计计数器（按结果类型分类）。
+            host_hits: 按主机名的请求命中次数排行。
+            keyword_hits: 按关键词的过滤命中次数排行。
+            cache: 上游响应的原始字节缓存（支持规则热更新）。
+            rate_limits: 按客户端 IP 的访问频率计数。
+            change_history: 规则变更历史记录（JSONL 持久化）。
+        """
         # config 是从 JSON 文件读入的当前规则和运行参数；管理 API 修改规则时，
         # 会同时更新这里的内存副本并写回配置文件，所以代理无需重启即可生效。
         self.config = config
@@ -130,7 +154,12 @@ class RuntimeState:
         self.change_history = self._load_change_history()
 
     def _load_change_history(self):
-        """加载最近的规则和运行设置变更，供管理前端回显。"""
+        """加载最近的规则和运行设置变更，供管理前端回显。
+
+        Returns:
+            list[dict]: 按时间倒序排列的最近变更记录。配置未启用
+            `change_log_file` 或文件不存在时返回空列表。
+        """
         path_text = self.config.get("change_log_file")
         if not path_text:
             return []
@@ -149,7 +178,11 @@ class RuntimeState:
         return list(reversed(entries))
 
     def _append_change_history_locked(self, entry):
-        """追加一条 JSONL 变更记录，调用方必须已经持有 self.lock。"""
+        """追加一条 JSONL 变更记录，调用方必须已经持有 self.lock。
+
+        Args:
+            entry: 已构造好的规则或运行设置变更记录。
+        """
         path_text = self.config.get("change_log_file")
         if not path_text:
             return
@@ -159,11 +192,20 @@ class RuntimeState:
             change_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def get_config(self):
+        """读取当前运行配置的浅拷贝。
+
+        Returns:
+            dict: 当前内存配置副本。调用方修改返回值不会直接影响运行状态。
+        """
         with self.lock:
             return dict(self.config)
 
     def reload_config(self):
-        """从配置文件重新加载规则，用于管理前端的“重新加载配置”按钮。"""
+        """从配置文件重新加载规则，用于管理前端的“重新加载配置”按钮。
+
+        Returns:
+            dict: 重新加载后的完整配置。
+        """
         if not self.config_path:
             return self.get_config()
         config = load_config(self.config_path)
@@ -176,7 +218,11 @@ class RuntimeState:
         return config
 
     def _save_config_locked(self):
-        """把当前内存配置写回 JSON 文件，调用方必须已经持有 self.lock。"""
+        """把当前内存配置写回 JSON 文件，调用方必须已经持有 self.lock。
+
+        Returns:
+            bool: 成功写回配置文件返回 True；没有配置路径时返回 False。
+        """
         if not self.config_path:
             return False
         config_path = resolve_project_path(self.config_path)
@@ -187,18 +233,39 @@ class RuntimeState:
         return True
 
     def get_rules(self):
-        """返回当前可编辑规则，用于前端和 curl 查询。"""
+        """返回当前可编辑规则，用于前端和 curl 查询。
+
+        Returns:
+            dict: 包含规则模式和规则组列表的响应结构。
+        """
         with self.lock:
             return build_rules_payload(self.config)
 
     def get_change_history(self, limit=80):
-        """返回最近变更，使 API/CLI 修改能够在管理前端回显。"""
+        """返回最近变更，使 API/CLI 修改能够在管理前端回显。
+
+        Args:
+            limit: 最多返回多少条记录，后端会限制在 1 到 200 之间。
+
+        Returns:
+            list[dict]: 最近的规则或运行设置变更记录。
+        """
         with self.lock:
             limit = max(1, min(int(limit), 200))
             return [dict(item) for item in self.change_history[:limit]]
 
     def query_changes(self, action="", rule_type="", search="", limit=200):
-        """查询当前运行期间的变更历史，供规则变更总览页面筛选展示。"""
+        """查询当前运行期间的变更历史，供规则变更总览页面筛选展示。
+
+        Args:
+            action: 可选操作类型，例如 add、delete、update、replace、settings。
+            rule_type: 可选规则组名称，例如 blocked_domains。
+            search: 可选全文搜索关键字。
+            limit: 最多返回多少条匹配记录。
+
+        Returns:
+            dict: 包含总数、匹配数、分类统计和记录列表的查询结果。
+        """
         normalized_action = str(action or "").strip().lower()
         normalized_rule_type = str(rule_type or "").strip()
         search_lower = str(search or "").strip().lower()
@@ -237,7 +304,15 @@ class RuntimeState:
         }
 
     def _record_change_locked(self, action, result):
-        """保存一条管理操作记录，调用方必须已经持有 self.lock。"""
+        """保存一条管理操作记录，调用方必须已经持有 self.lock。
+
+        Args:
+            action: 操作类型，例如 add、delete、settings。
+            result: 规则修改或设置修改的执行结果。
+
+        Returns:
+            dict: 写入内存和 JSONL 文件的变更记录。
+        """
         entry = {
             "time": datetime.now().isoformat(timespec="seconds"),
             "action": action,
@@ -261,7 +336,15 @@ class RuntimeState:
         return entry
 
     def _clear_cache_for_rule_change_locked(self, rule_type, changed):
-        """正文过滤规则变化后清空旧响应缓存，调用方必须持有 self.lock。"""
+        """正文过滤规则变化后清空旧响应缓存，调用方必须持有 self.lock。
+
+        Args:
+            rule_type: 被修改的规则组名称。
+            changed: 规则组内容是否真的发生变化。
+
+        Returns:
+            int: 被清理的缓存条目数量。
+        """
         if changed and rule_type == "blocked_content_keywords":
             cleared = len(self.cache)
             self.cache.clear()
@@ -269,7 +352,18 @@ class RuntimeState:
         return 0
 
     def add_list_rule(self, rule_type, value):
-        """向指定规则列表新增一条规则，并立即保存到配置文件。"""
+        """向指定规则列表新增一条规则，并立即保存到配置文件。
+
+        Args:
+            rule_type: 规则组名称，例如 `blocked_domains`。
+            value: 要新增的规则值，例如 `*.bing.com`。
+
+        Returns:
+            dict: 包含 ok、changed、saved、values、history_entry 等字段的结果。
+
+        Raises:
+            ValueError: 规则组不存在或规则值为空/非法。
+        """
         validate_rule_type(rule_type)
         normalized = normalize_rule_value(rule_type, value)
         new_identity = rule_identity(rule_type, normalized)
@@ -299,7 +393,18 @@ class RuntimeState:
             return result
 
     def delete_list_rule(self, rule_type, value):
-        """从指定规则列表删除一条规则，并立即保存到配置文件。"""
+        """从指定规则列表删除一条规则，并立即保存到配置文件。
+
+        Args:
+            rule_type: 规则组名称。
+            value: 要删除的规则值。
+
+        Returns:
+            dict: 删除结果。即使目标不存在，也会返回 ok=True 和 changed=False。
+
+        Raises:
+            ValueError: 规则组不存在或规则值非法。
+        """
         validate_rule_type(rule_type)
         target_identity = rule_identity(rule_type, value)
         with self.lock:
@@ -325,7 +430,19 @@ class RuntimeState:
             return result
 
     def update_list_rule(self, rule_type, old_value, new_value):
-        """修改指定规则列表中的一条规则，并立即保存到配置文件。"""
+        """修改指定规则列表中的一条规则，并立即保存到配置文件。
+
+        Args:
+            rule_type: 规则组名称。
+            old_value: 要被替换的旧规则值。
+            new_value: 替换后的新规则值。
+
+        Returns:
+            dict: 修改结果和最新规则组。
+
+        Raises:
+            ValueError: 旧规则不存在、新规则重复、规则组非法或规则值非法。
+        """
         validate_rule_type(rule_type)
         old_identity = rule_identity(rule_type, old_value)
         normalized_new = normalize_rule_value(rule_type, new_value)
@@ -368,7 +485,18 @@ class RuntimeState:
             return result
 
     def replace_list_rules(self, rule_type, values):
-        """替换某一个规则组，适合命令行一次性重设整组过滤条件。"""
+        """替换某一个规则组，适合命令行一次性重设整组过滤条件。
+
+        Args:
+            rule_type: 规则组名称。
+            values: 新规则值列表。
+
+        Returns:
+            dict: 替换结果和替换后的完整规则组。
+
+        Raises:
+            ValueError: 规则组非法，或 values 不是列表。
+        """
         validate_rule_type(rule_type)
         if not isinstance(values, list):
             raise ValueError("values must be a list")
@@ -400,7 +528,17 @@ class RuntimeState:
             return result
 
     def update_settings(self, updates):
-        """更新模式、缓存、认证、限流等简单配置项，并保存到配置文件。"""
+        """更新模式、缓存、认证、限流等简单配置项，并保存到配置文件。
+
+        Args:
+            updates: 设置项字典，例如 `{"rate_limit_enabled": True}`。
+
+        Returns:
+            dict: 设置修改结果、最新设置和变更历史记录。
+
+        Raises:
+            ValueError: 设置项不支持、类型不合法或数值越界。
+        """
         if not isinstance(updates, dict):
             raise ValueError("settings payload must be an object")
         normalized_updates = {}
@@ -468,19 +606,42 @@ class RuntimeState:
             return result
 
     def increment(self, key, amount=1):
+        """增加一个统计计数器。
+
+        Args:
+            key: 统计字段名称。
+            amount: 增加的数量，默认加 1。
+        """
         with self.lock:
             self.stats[key] = self.stats.get(key, 0) + amount
 
     def record_host(self, host):
+        """记录目标主机访问次数，用于首页 Top Hosts 排行。
+
+        Args:
+            host: 目标服务器主机名。
+        """
         with self.lock:
             self.host_hits[host] = self.host_hits.get(host, 0) + 1
 
     def record_keyword(self, keyword):
+        """记录正文过滤关键词命中次数。
+
+        Args:
+            keyword: 命中的正文过滤关键词。
+        """
         with self.lock:
             self.keyword_hits[keyword] = self.keyword_hits.get(keyword, 0) + 1
 
     def get_cache(self, key):
-        """读取 HTTP GET 缓存；如果缓存过期，自动删除并返回 None。"""
+        """读取 HTTP GET 缓存；如果缓存过期，自动删除并返回 None。
+
+        Args:
+            key: 由 host、port、path 组成的缓存键。
+
+        Returns:
+            dict | None: 未过期缓存条目；不存在或过期时返回 None。
+        """
         with self.lock:
             entry = self.cache.get(key)
             if not entry:
@@ -491,7 +652,15 @@ class RuntimeState:
             return dict(entry)
 
     def set_cache(self, key, response_bytes, status_code, ttl_seconds, max_items):
-        """写入 HTTP GET 缓存，并在超过最大条目数时删除最早的缓存。"""
+        """写入 HTTP GET 缓存，并在超过最大条目数时删除最早的缓存。
+
+        Args:
+            key: 缓存键。
+            response_bytes: 上游服务器返回的原始 HTTP 响应字节。
+            status_code: 上游响应状态码。
+            ttl_seconds: 缓存有效期。
+            max_items: 最多缓存条目数。
+        """
         if ttl_seconds <= 0 or max_items <= 0:
             return
         with self.lock:
@@ -509,7 +678,16 @@ class RuntimeState:
             }
 
     def check_rate_limit(self, client_ip, max_requests, window_seconds):
-        """按客户端 IP 做固定时间窗口限流，返回是否允许和剩余/等待时间。"""
+        """按客户端 IP 做固定时间窗口限流。
+
+        Args:
+            client_ip: 客户端 IP 地址。
+            max_requests: 一个窗口内允许的最大请求数。
+            window_seconds: 时间窗口长度。
+
+        Returns:
+            tuple[bool, int, int]: 是否允许、被拒绝时建议等待秒数、当前窗口计数。
+        """
         if max_requests <= 0:
             return True, 0, 0
         now = time.time()
@@ -528,21 +706,33 @@ class RuntimeState:
             return True, 0, bucket["count"]
 
     def clear_cache(self):
-        """清空缓存，方便验收时重新演示第一次 MISS、第二次 HIT。"""
+        """清空缓存，方便验收时重新演示第一次 MISS、第二次 HIT。
+
+        Returns:
+            int: 被清空的缓存条目数。
+        """
         with self.lock:
             count = len(self.cache)
             self.cache.clear()
             return count
 
     def clear_rate_limits(self):
-        """清空限流计数桶，让访问频率设置修改后可以马上重新演示。"""
+        """清空限流计数桶，让访问频率设置修改后可以马上重新演示。
+
+        Returns:
+            int: 被清空的限流客户端数量。
+        """
         with self.lock:
             count = len(self.rate_limits)
             self.rate_limits.clear()
             return count
 
     def clear_change_history(self):
-        """清空内存与 JSONL 文件中的规则和运行设置变更历史。"""
+        """清空内存与 JSONL 文件中的规则和运行设置变更历史。
+
+        Returns:
+            int: 清空前的变更记录数量。
+        """
         with self.lock:
             count = len(self.change_history)
             self.change_history.clear()
@@ -564,7 +754,12 @@ class RuntimeState:
             self.started_at = time.time()
 
     def snapshot(self):
-        """返回管理首页使用的实时统计快照，并派生跨类别的总拦截数。"""
+        """返回管理首页使用的实时统计快照，并派生跨类别的总拦截数。
+
+        Returns:
+            dict: 包含 started_at、uptime_seconds、stats、top_hosts、
+            keyword_hits 的首页统计数据。
+        """
         with self.lock:
             uptime_seconds = int(time.time() - self.started_at)
             stats = dict(self.stats)
@@ -599,7 +794,17 @@ class RuntimeState:
             }
 
 
+# =============================================================================
+# 2. 参数解析与 HTTP 报文解析区
+# =============================================================================
+
+
 def parse_args():
+    """解析代理进程启动参数。
+
+    Returns:
+        argparse.Namespace: 包含代理端口、管理端口、配置文件路径等参数。
+    """
     parser = argparse.ArgumentParser(description="Web proxy server with admin dashboard")
     parser.add_argument("--host", default=None, help="Proxy listen host")
     parser.add_argument("--port", type=int, default=None, help="Proxy listen port")
@@ -611,14 +816,29 @@ def parse_args():
 
 
 def ensure_state(state_or_config=None):
-    """测试代码可直接传入配置 dict；真实运行时则复用 RuntimeState 对象。"""
+    """确保传入对象是 RuntimeState。
+
+    Args:
+        state_or_config: 已有 RuntimeState，或测试代码直接传入的配置 dict。
+
+    Returns:
+        RuntimeState: 可供代理处理流程使用的运行状态对象。
+    """
     if isinstance(state_or_config, RuntimeState):
         return state_or_config
     return RuntimeState(state_or_config or {})
 
 
 def find_header(headers, name):
-    """在原始请求头/响应头行中查找一个头字段，大小写不敏感。"""
+    """在原始请求头/响应头行中查找一个头字段，大小写不敏感。
+
+    Args:
+        headers: 原始 HTTP 头部行列表。
+        name: 要查找的头字段名称，例如 `Host`。
+
+    Returns:
+        str: 头字段值；不存在时返回空字符串。
+    """
     prefix = name.lower() + ":"
     for line in headers:
         if line.lower().startswith(prefix):
@@ -627,7 +847,17 @@ def find_header(headers, name):
 
 
 def parse_bounded_query_int(query, name, default, maximum):
-    """读取整数查询参数，并限制异常值和过大结果集。"""
+    """读取整数查询参数，并限制异常值和过大结果集。
+
+    Args:
+        query: `parse_qs()` 解析后的查询参数字典。
+        name: 参数名称。
+        default: 缺省值或解析失败时使用的值。
+        maximum: 允许的最大值。
+
+    Returns:
+        int: 限制在 1 到 maximum 之间的整数。
+    """
     try:
         value = int(query.get(name, [str(default)])[0])
     except (TypeError, ValueError):
@@ -645,6 +875,15 @@ def parse_http_request(request_text):
       代理只知道目标主机和端口，后续正文是 TLS 加密字节流。
     - 本地测试或部分工具也可能发送普通格式 `GET /a.html HTTP/1.1`，
       此时要从 Host 头补出目标主机。
+    Args:
+        request_text: 从客户端 socket 收到并按 iso-8859-1 解码后的 HTTP 请求文本。
+
+    Returns:
+        dict: 包含 method、target、version、host、port、path、host_header、
+        headers 的请求信息字典。
+
+    Raises:
+        ValueError: 请求为空、请求行格式错误、Host 缺失或目标主机缺失。
     """
     lines = request_text.splitlines()
     if not lines:
@@ -709,8 +948,23 @@ def parse_http_request(request_text):
     }
 
 
+# =============================================================================
+# 3. 本代理生成响应区：错误页、403 拦截页、407 认证挑战
+# =============================================================================
+
+
 def send_simple_response(client_socket, status_code, reason, message):
-    """向客户端返回简单文本响应，供 400/403/429/502/504 等错误场景使用。"""
+    """向客户端返回简单文本响应，供 400/403/429/502/504 等错误场景使用。
+
+    Args:
+        client_socket: 客户端连接 socket。
+        status_code: HTTP 状态码。
+        reason: HTTP 原因短语，例如 `Bad Gateway`。
+        message: 响应正文中的说明文本。
+
+    Returns:
+        int: 发送给客户端的响应字节数。
+    """
     body = f"{status_code} {reason}: {message}\n".encode("utf-8")
     response = (
         f"HTTP/1.1 {status_code} {reason}\r\n".encode("ascii")
@@ -725,7 +979,17 @@ def send_simple_response(client_socket, status_code, reason, message):
 
 
 def build_policy_block_response(reason, request_info=None, client_ip="", detail=""):
-    """构造替代原网页的 403 拦截提示页，并提供可展开的具体命中信息。"""
+    """构造替代原网页的 403 拦截提示页，并提供可展开的具体命中信息。
+
+    Args:
+        reason: 拦截原因，例如 `domain_blacklist` 或 `url_keyword:game`。
+        request_info: 当前请求信息字典，用于在提示页中展示目标地址。
+        client_ip: 客户端 IP 地址。
+        detail: 额外命中信息；为空时使用 reason。
+
+    Returns:
+        bytes: 完整 HTTP/1.1 403 响应字节，可直接发送给浏览器。
+    """
     request_info = request_info or {}
     reason_labels = {
         "domain_blacklist": "目标域名命中黑名单",
@@ -790,14 +1054,32 @@ def build_policy_block_response(reason, request_info=None, client_ip="", detail=
 
 
 def send_policy_block_response(client_socket, reason, request_info=None, client_ip="", detail=""):
-    """发送浏览器可直接展示的访问策略拦截页。"""
+    """发送浏览器可直接展示的访问策略拦截页。
+
+    Args:
+        client_socket: 客户端连接 socket。
+        reason: 拦截原因。
+        request_info: 当前请求信息。
+        client_ip: 客户端 IP 地址。
+        detail: 额外命中信息。
+
+    Returns:
+        int: 发送给客户端的字节数。
+    """
     response = build_policy_block_response(reason, request_info, client_ip, detail)
     client_socket.sendall(response)
     return len(response)
 
 
 def send_auth_required_response(client_socket):
-    """返回代理认证挑战响应，curl 或浏览器收到后会知道需要代理用户名密码。"""
+    """返回代理认证挑战响应，curl 或浏览器收到后会知道需要代理用户名密码。
+
+    Args:
+        client_socket: 客户端连接 socket。
+
+    Returns:
+        int: 发送给客户端的响应字节数。
+    """
     body = b"407 Proxy Authentication Required: valid proxy credentials required\n"
     response = (
         b"HTTP/1.1 407 Proxy Authentication Required\r\n"
@@ -812,6 +1094,11 @@ def send_auth_required_response(client_socket):
     return len(response)
 
 
+# =============================================================================
+# 4. 请求阶段访问控制区：客户端 IP、域名、URL、方法、代理认证
+# =============================================================================
+
+
 def domain_matches(host, patterns):
     """匹配域名规则，支持完整域名、后缀域名和显式通配符。
 
@@ -820,6 +1107,12 @@ def domain_matches(host, patterns):
     - `baidu.com` 匹配 `baidu.com` 及其子域名，例如 `www.baidu.com`；
     - `*.baidu.com`、`*baidu*` 使用 fnmatch 通配符匹配；
     - 普通短词 `baidu` 不自动当作包含匹配，避免误伤其他无关域名。
+    Args:
+        host: 当前请求的目标主机名。
+        patterns: 配置中的域名规则列表。
+
+    Returns:
+        bool: 目标主机命中任意规则时返回 True。
     """
     host = host.lower().strip(".")
     for pattern in patterns:
@@ -836,7 +1129,15 @@ def domain_matches(host, patterns):
 
 
 def client_ip_matches(client_ip, patterns):
-    """判断客户端地址是否命中单个 IP 或 CIDR 网段规则。"""
+    """判断客户端地址是否命中单个 IP 或 CIDR 网段规则。
+
+    Args:
+        client_ip: 客户端 IP 地址。
+        patterns: 配置中的 IP 或 CIDR 规则列表。
+
+    Returns:
+        bool: 命中任意 IP/CIDR 规则时返回 True。
+    """
     try:
         address = ipaddress.ip_address(client_ip)
     except ValueError:
@@ -858,7 +1159,15 @@ def client_ip_matches(client_ip, patterns):
 
 
 def check_client_access_policy(client_ip, config):
-    """在认证和目标过滤前执行客户端 IP 黑白名单策略。"""
+    """在认证和目标过滤前执行客户端 IP 黑白名单策略。
+
+    Args:
+        client_ip: 客户端 IP 地址。
+        config: 当前运行配置。
+
+    Returns:
+        tuple[bool, str]: 是否允许访问代理，以及 `allow` 或具体拦截原因。
+    """
     blocked_clients = config.get("blocked_client_ips", [])
     if client_ip_matches(client_ip, blocked_clients):
         return False, "client_ip_blacklist"
@@ -879,6 +1188,12 @@ def check_access_policy(request_info, config):
 
     正文关键字过滤不在这里做，因为正文需要先向目标服务器取回响应，
     再在 filter_response_content 中检查。
+    Args:
+        request_info: `parse_http_request()` 返回的请求信息。
+        config: 当前运行配置。
+
+    Returns:
+        tuple[bool, str]: 是否允许继续转发，以及 `allow` 或具体拦截原因。
     """
     host = request_info["host"]
     method = request_info["method"]
@@ -917,6 +1232,12 @@ def check_proxy_auth(request_info, config):
     代理认证与普通网站登录不同：浏览器会把用户名密码放在
     Proxy-Authorization 头里发给代理，代理验证通过后才继续访问目标网站。
     这个头不会转发给上游服务器，避免把代理密码泄露给外部网站。
+    Args:
+        request_info: 当前请求信息，主要读取 headers 中的 Proxy-Authorization。
+        config: 当前运行配置，包含 proxy_auth_enabled 和 proxy_auth_users。
+
+    Returns:
+        bool: 认证关闭或用户名密码正确时返回 True，否则返回 False。
     """
     if not config.get("proxy_auth_enabled", False):
         return True
@@ -938,18 +1259,45 @@ def check_proxy_auth(request_info, config):
     return users.get(username) == password
 
 
+# =============================================================================
+# 5. 缓存与 HTTP 响应解析区：判断缓存、解析状态码、接收完整响应
+# =============================================================================
+
+
 def is_cacheable_request(request_info, config):
-    """当前只缓存 GET 请求，避免缓存 POST/PUT 等可能改变服务器状态的请求。"""
+    """判断当前请求是否可以进入 HTTP GET 缓存。
+
+    Args:
+        request_info: 当前请求信息。
+        config: 当前运行配置。
+
+    Returns:
+        bool: 缓存开启且请求方法为 GET 时返回 True。
+    """
     return bool(config.get("cache_enabled", False)) and request_info["method"] == "GET"
 
 
 def build_cache_key(request_info):
-    """缓存键由 host、port、path 组成，同一路径的重复 GET 可命中缓存。"""
+    """构造缓存键。
+
+    Args:
+        request_info: 当前请求信息。
+
+    Returns:
+        str: 由 host、port、path 组成的缓存键。
+    """
     return f"{request_info['host']}:{request_info['port']}{request_info['path']}"
 
 
 def is_text_content_type(content_type):
-    """只有文本类响应才做正文关键字扫描，图片、压缩包等二进制内容直接放行。"""
+    """判断响应类型是否适合做正文关键字扫描。
+
+    Args:
+        content_type: HTTP Content-Type 头字段值。
+
+    Returns:
+        bool: 文本、HTML、CSS、JS、JSON 等内容返回 True。
+    """
     text_types = (
         "text/html",
         "text/plain",
@@ -962,11 +1310,27 @@ def is_text_content_type(content_type):
 
 
 def response_header_value(header_lines, name):
+    """在响应头行中查找一个头字段。
+
+    Args:
+        header_lines: 响应头行列表。
+        name: 要查找的头字段名。
+
+    Returns:
+        str: 头字段值；不存在时返回空字符串。
+    """
     return find_header(header_lines, name)
 
 
 def parse_status_code(response_bytes):
-    """从 HTTP 响应状态行中取出状态码，例如 200、403、404。"""
+    """从 HTTP 响应状态行中取出状态码，例如 200、403、404。
+
+    Args:
+        response_bytes: 完整或部分 HTTP 响应字节。
+
+    Returns:
+        int: 解析到的状态码；失败时返回 0。
+    """
     first_line = response_bytes.split(b"\r\n", 1)[0].decode("iso-8859-1", errors="replace")
     parts = first_line.split()
     if len(parts) >= 2 and parts[1].isdigit():
@@ -975,7 +1339,14 @@ def parse_status_code(response_bytes):
 
 
 def decode_chunked_body(body):
-    """解析 HTTP chunked 正文，仅用于关键词检查；解析失败时保留原始正文。"""
+    """解析 HTTP chunked 正文，仅用于关键词检查；解析失败时保留原始正文。
+
+    Args:
+        body: 响应体字节，可能是 chunked 编码。
+
+    Returns:
+        bytes: 解码后的连续正文；解析失败时返回原始 body。
+    """
     chunks = []
     position = 0
     try:
@@ -998,7 +1369,14 @@ def decode_chunked_body(body):
 
 
 def chunked_body_is_complete(body):
-    """判断 chunked 响应是否已经收到 0 长度结束块及可选尾部字段。"""
+    """判断 chunked 响应是否已经收到 0 长度结束块及可选尾部字段。
+
+    Args:
+        body: chunked 响应体字节。
+
+    Returns:
+        bool: 收到完整结束块时返回 True。
+    """
     position = 0
     try:
         while True:
@@ -1020,7 +1398,15 @@ def chunked_body_is_complete(body):
 
 
 def http_response_is_complete(response_bytes, request_method="GET"):
-    """按 HTTP 响应头判断报文是否完整，避免依赖目标服务器主动关闭连接。"""
+    """按 HTTP 响应头判断报文是否完整，避免依赖目标服务器主动关闭连接。
+
+    Args:
+        response_bytes: 已接收的 HTTP 响应字节。
+        request_method: 原请求方法，HEAD/204/304 没有普通正文。
+
+    Returns:
+        bool: 响应已经完整时返回 True。
+    """
     if b"\r\n\r\n" not in response_bytes:
         return False
 
@@ -1047,7 +1433,14 @@ def http_response_is_complete(response_bytes, request_method="GET"):
 
 
 def response_has_explicit_length(response_bytes):
-    """判断响应是否声明了必须完整接收的 Content-Length 或 chunked 边界。"""
+    """判断响应是否声明了必须完整接收的 Content-Length 或 chunked 边界。
+
+    Args:
+        response_bytes: HTTP 响应字节。
+
+    Returns:
+        bool: 响应头存在 Content-Length 或 Transfer-Encoding: chunked。
+    """
     if b"\r\n\r\n" not in response_bytes:
         return False
     header_bytes = response_bytes.split(b"\r\n\r\n", 1)[0]
@@ -1064,6 +1457,15 @@ def receive_http_response(upstream_socket, request_method="GET"):
     代理必须先尽量收完整上游响应，才能做正文关键词过滤和缓存。
     对 Content-Length 或 chunked 响应，本函数按 HTTP 协议边界判断结束；
     对没有长度信息的旧式响应，只能等待服务器关闭连接或超时。
+    Args:
+        upstream_socket: 与目标 Web 服务器建立的 socket。
+        request_method: 原请求方法，用于判断 HEAD/204/304 等无正文场景。
+
+    Returns:
+        bytes: 从目标服务器接收到的 HTTP 响应字节。
+
+    Raises:
+        socket.timeout: 目标服务器长时间未返回完整响应。
     """
     response = bytearray()
     while True:
@@ -1081,12 +1483,23 @@ def receive_http_response(upstream_socket, request_method="GET"):
             return bytes(response)
 
 
+# =============================================================================
+# 6. 响应阶段正文过滤区：只处理 HTTP 明文文本响应
+# =============================================================================
+
+
 def decode_text_body(body, content_type):
     """按响应声明字符集解码正文，并兼容常见 UTF-8、GB18030 页面。
 
     关键词匹配必须在字符串层面完成，所以需要把字节正文转换成文本。
     如果页面没有声明 charset，就按常见顺序尝试，保证国内网页和英文网页
     都有较高概率被正确识别。
+    Args:
+        body: 已解压、已去 chunked 的响应体字节。
+        content_type: Content-Type 头字段，用于读取 charset。
+
+    Returns:
+        str: 解码后的正文文本。
     """
     declared_charset = ""
     for parameter in content_type.split(";")[1:]:
@@ -1121,6 +1534,15 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
 
     注意：HTTPS 正文经过 TLS 加密，本代理没有做中间人解密，因此无法检查
     HTTPS 页面正文，只能检查 CONNECT 目标域名。
+    Args:
+        response_bytes: 上游服务器返回的完整 HTTP 响应字节。
+        config: 当前运行配置，读取 blocked_content_keywords。
+        request_info: 当前请求信息，用于生成拦截提示页。
+        client_ip: 客户端 IP 地址，用于生成拦截提示页。
+
+    Returns:
+        tuple[bytes, str | None]: 处理后的响应字节，以及命中的正文关键词。
+        未命中时返回原响应和 None。
     """
     if b"\r\n\r\n" not in response_bytes:
         return response_bytes, None
@@ -1171,8 +1593,20 @@ def filter_response_content(response_bytes, config, request_info=None, client_ip
     return response_bytes, None
 
 
+# =============================================================================
+# 7. 代理转发区：请求改写、HTTP 转发、HTTPS CONNECT 隧道
+# =============================================================================
+
+
 def split_request(request_text):
-    """把客户端请求分为头部行和可选请求体，用于改写上游请求。"""
+    """把客户端请求分为头部行和可选请求体，用于改写上游请求。
+
+    Args:
+        request_text: 客户端发来的原始请求文本。
+
+    Returns:
+        tuple[list[str], str]: 请求头行列表和请求体文本。
+    """
     if "\r\n\r\n" in request_text:
         header_text, body = request_text.split("\r\n\r\n", 1)
     elif "\n\n" in request_text:
@@ -1193,6 +1627,12 @@ def build_upstream_request(request_text, request_info):
 
     因此代理在这里完成“请求报文改写”：保留必要请求头，去掉代理专用头，
     并强制使用 identity 编码，方便后续正文关键字检查。
+    Args:
+        request_text: 客户端发来的原始请求文本。
+        request_info: `parse_http_request()` 解析出的请求信息。
+
+    Returns:
+        bytes: 可直接发给目标 Web 服务器的普通 HTTP 请求字节。
     """
     header_lines, body = split_request(request_text)
     upstream_lines = [
@@ -1236,6 +1676,16 @@ def forward_http(client_socket, request_text, request_info, config, client_ip=""
     客户端浏览器 -> 本代理 -> 目标 Web 服务器 -> 本代理 -> 客户端浏览器。
     域名/URL 规则已经在 handle_client 中提前判断；这里主要负责真正转发
     和收到响应后的正文关键字过滤。
+    Args:
+        client_socket: 客户端连接 socket。
+        request_text: 客户端原始 HTTP 请求文本。
+        request_info: 解析后的请求信息。
+        config: 当前运行配置。
+        client_ip: 客户端 IP 地址。
+
+    Returns:
+        dict: 转发结果，包含 outcome、status_code、bytes_sent，
+        成功时还可能包含 response_bytes，正文过滤时包含 keyword。
     """
     upstream_request = build_upstream_request(request_text, request_info)
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
@@ -1296,6 +1746,14 @@ def forward_connect(client_socket, request_info, config):
 
     因为没有解密 TLS，本项目可以记录 CONNECT、限制域名、统计流量，
     但不能检查 HTTPS 页面路径和正文关键字。
+    Args:
+        client_socket: 客户端连接 socket。
+        request_info: CONNECT 请求的解析结果，包含 host 和 port。
+        config: 当前运行配置。
+
+    Returns:
+        dict: 隧道处理结果，包含 outcome、status_code、bytes_sent、
+        bytes_from_client。
     """
     timeout = int(config.get("timeout_seconds", DEFAULT_TIMEOUT))
     response = b"HTTP/1.1 200 Connection Established\r\nConnection: close\r\n\r\n"
@@ -1382,8 +1840,18 @@ def forward_connect(client_socket, request_info, config):
         }
 
 
+# =============================================================================
+# 8. 客户端连接处理区：把认证、限流、过滤、缓存、转发串起来
+# =============================================================================
+
+
 def update_block_stats(state, reason):
-    """根据拦截原因更新对应统计项。"""
+    """根据拦截原因更新对应统计项。
+
+    Args:
+        state: 当前 RuntimeState。
+        reason: 拦截原因字符串，例如 `domain_blacklist` 或 `url_keyword:game`。
+    """
     if reason.startswith("client_ip_"):
         state.increment("blocked_client")
     elif reason.startswith("url_keyword:"):
@@ -1406,6 +1874,13 @@ def handle_client(client_socket, client_address, state):
     6. GET 请求尝试读取缓存；
     7. 按 CONNECT 或普通 HTTP 分支转发；
     8. 记录统计和日志，供前端大屏和日志详情页展示。
+    Args:
+        client_socket: 与客户端浏览器或 curl 建立的 socket。
+        client_address: 客户端地址元组，格式通常是 `(ip, port)`。
+        state: 当前 RuntimeState，保存配置、统计、缓存和日志相关状态。
+
+    Returns:
+        None: 本函数直接向 client_socket 写响应，处理结束后关闭连接。
     """
     config = state.get_config()
     try:
@@ -1642,6 +2117,11 @@ def handle_client(client_socket, client_address, state):
         client_socket.close()
 
 
+# =============================================================================
+# 9. 管理后端区：前端页面、规则 API、统计 API、日志 API
+# =============================================================================
+
+
 class AdminHandler(BaseHTTPRequestHandler):
     """管理后端：提供前端页面、配置/规则 API、统计 API、日志 API 和演示重置 API。
 
@@ -1650,12 +2130,19 @@ class AdminHandler(BaseHTTPRequestHandler):
     - 前端按钮和 rule_cli.py 都调用这里的 /api/rules/* 与 /api/settings/update；
     - 代理线程写入 RuntimeState 和日志文件后，前端通过 /api/stats、/api/logs/query
       读取最新统计和拦截证据。
+    Attributes:
+        state: 由 start_admin_server 动态绑定的 RuntimeState。所有 HTTP API
+        都通过它读取或修改当前代理状态。
     """
 
     state = None
 
     def do_GET(self):
-        """处理只读接口：前端页面、当前配置、统计、日志查询、CSV 导出。"""
+        """处理只读接口：前端页面、当前配置、统计、日志查询、CSV 导出。
+
+        Returns:
+            None: 直接通过 `self.wfile` 写 HTTP 响应。
+        """
         parsed = urlsplit(self.path)
         if parsed.path in ("/", "/index.html"):
             self.send_frontend(FRONTEND_INDEX)
@@ -1770,7 +2257,11 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Not Found")
 
     def do_POST(self):
-        """处理会改变运行状态的接口：规则增删改、设置切换、缓存/日志清理。"""
+        """处理会改变运行状态的接口：规则增删改、设置切换、缓存/日志清理。
+
+        Returns:
+            None: 直接通过 `self.wfile` 写 HTTP 响应。
+        """
         parsed = urlsplit(self.path)
         try:
             if parsed.path == "/api/reload":
@@ -1846,7 +2337,11 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": str(error)}, status_code=400)
 
     def send_frontend(self, page_path=FRONTEND_INDEX):
-        """从固定前端目录发送可信管理页面。"""
+        """从固定前端目录发送可信管理页面。
+
+        Args:
+            page_path: 要发送的 HTML 页面路径。
+        """
         if not page_path.exists():
             self.send_error(404, f"{page_path.name} not found")
             return
@@ -1858,7 +2353,14 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def read_json_body(self):
-        """读取 POST JSON 请求体，兼容 PowerShell 和 CMD 常见 curl 写法。"""
+        """读取 POST JSON 请求体，兼容 PowerShell 和 CMD 常见 curl 写法。
+
+        Returns:
+            dict: 解析后的 JSON 对象。
+
+        Raises:
+            ValueError: 请求体不是合法 JSON/宽松 JSON 对象。
+        """
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length <= 0:
             return {}
@@ -1882,11 +2384,24 @@ class AdminHandler(BaseHTTPRequestHandler):
         return payload
 
     def send_json(self, payload, status_code=200):
+        """发送 JSON 响应。
+
+        Args:
+            payload: 可 JSON 序列化的响应对象。
+            status_code: HTTP 状态码。
+        """
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_bytes(body, "application/json; charset=utf-8", status_code=status_code)
 
     def send_bytes(self, body, content_type, status_code=200, filename=""):
-        """发送字节响应；提供文件名时触发浏览器下载验收证据。"""
+        """发送字节响应；提供文件名时触发浏览器下载验收证据。
+
+        Args:
+            body: 响应体字节。
+            content_type: Content-Type 响应头。
+            status_code: HTTP 状态码。
+            filename: 可选下载文件名，传入后添加 Content-Disposition。
+        """
         self.send_response(status_code)
         self.send_header("Content-Type", content_type)
         if filename:
@@ -1896,11 +2411,26 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, format, *args):
+        """关闭 BaseHTTPRequestHandler 默认访问日志，避免终端输出过于嘈杂。"""
         return
 
 
+# =============================================================================
+# 10. 服务启动区：启动管理端口和代理端口
+# =============================================================================
+
+
 def start_admin_server(host, port, state):
-    """启动管理服务，默认监听 8088，前端和 API 都从这里提供。"""
+    """启动管理服务，默认监听 8088，前端和 API 都从这里提供。
+
+    Args:
+        host: 管理后端监听地址。
+        port: 管理后端监听端口。
+        state: 当前 RuntimeState，绑定到 AdminHandler。
+
+    Returns:
+        ThreadingHTTPServer: 已启动并在后台线程运行的管理服务对象。
+    """
     handler_class = type("BoundAdminHandler", (AdminHandler,), {"state": state})
     server = ThreadingHTTPServer((host, port), handler_class)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1910,7 +2440,13 @@ def start_admin_server(host, port, state):
 
 
 def start_server(host, port, state=None):
-    """启动代理服务，默认监听 8080，为每个客户端连接创建处理线程。"""
+    """启动代理服务，默认监听 8080，为每个客户端连接创建处理线程。
+
+    Args:
+        host: 代理监听地址。
+        port: 代理监听端口。
+        state: 可选 RuntimeState；为空时会用默认配置创建。
+    """
     state = ensure_state(state)
     config = state.get_config()
 
@@ -1944,6 +2480,7 @@ def start_server(host, port, state=None):
 
 
 def main():
+    """程序入口：读取配置，启动管理后端，然后启动代理服务。"""
     args = parse_args()
     config = load_config(args.config)
     state = RuntimeState(config, args.config)
